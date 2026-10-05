@@ -1,0 +1,64 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: laser-engraving
+  threads:
+    virtual:
+      enabled: true
+
+  # Cấu hình tải file ảnh
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 15MB
+
+  # Cấu hình CSDL SQL Server (Mặc định)
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:sqlserver://localhost:1433;databaseName=LASER;encrypt=true;trustServerCertificate=true}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:sa}
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+
+  jpa:
+    hibernate:
+      ddl-auto: create
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        use_nationalized_character_data: true
+
+# Thông số cấu hình máy khắc Laser & Giới hạn an toàn
+app:
+  laser:
+    storage-path: storage/gcode
+    work-area:
+      max-width-mm: 300.0
+      max-height-mm: 200.0
+    limits:
+      max-power: 1000
+      min-speed: 100
+      max-speed: 5000
+      min-dpi: 100
+      max-dpi: 600
+  cors:
+    allowed-origins:
+      - "http://localhost:5173"
+      - "http://127.0.0.1:5173"
+      - "http://localhost:3000"
+
+# Cấu hình tài liệu Swagger UI & OpenAPI 3.0
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    try-it-out-enabled: true
+    display-request-duration: true
+    filter: true

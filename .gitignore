@@ -1,0 +1,139 @@
+# ==========================================
+# 1. Compiled Class Files & Build Artifacts
+# ==========================================
+*.class
+target/
+build/
+out/
+dist/
+bin/
+
+# Package outputs
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Exceptions
+!**/src/main/**/target/
+!**/src/test/**/target/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# Maven Wrapper JAR (if downloaded locally)
+.mvn/wrapper/maven-wrapper.jar
+
+# ==========================================
+# 2. Application Logs & Runtime Dumps
+# ==========================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Java crash dumps & profiling
+hs_err_pid*
+replay_pid*
+heapdump.hprof
+*.hprof
+
+# ==========================================
+# 3. Environment Variables & Credentials
+# ==========================================
+.env
+.env.*
+*.env
+application-secret.*
+application-credentials.*
+*credentials*.json
+
+# Exceptions: commit template config files
+!.env.example
+!.env.template
+
+# ==========================================
+# 4. Storage & Runtime Generated Files
+# ==========================================
+storage/gcode/*
+!storage/gcode/.gitkeep
+storage/uploads/*
+!storage/uploads/.gitkeep
+storage/temp/*
+!storage/temp/.gitkeep
+
+# ==========================================
+# 5. IDE & Editor Files
+# ==========================================
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Eclipse / Spring Tool Suite (STS)
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.sts4-cache
+
+# NetBeans
+nbproject/private/
+nbbuild/
+nbdist/
+.nb-gradle/
+
+# Visual Studio Code
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# Visual Studio
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.user
+*.userosv
+
+# Vim & Editors
+*~
+*.swp
+*.swo
+*.sw?
+*.bak
+*.tmp
+*.temp
+
+# ==========================================
+# 6. Operating System Metadata
+# ==========================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.fuse_hidden*
+.directory
+.Trash-*
