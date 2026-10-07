@@ -9,7 +9,7 @@ public interface AuthService {
     /**
      * Bắt đầu quy trình đăng ký tài khoản và phát mã OTP về Gmail
      */
-    void initiateRegister(RegisterRequest request);
+    String initiateRegister(RegisterRequest request);
 
     /**
      * Xác thực mã OTP 6 chữ số và kích hoạt tài khoản
@@ -19,7 +19,7 @@ public interface AuthService {
     /**
      * Gửi lại mã xác thực OTP
      */
-    void resendOtp(ResendOtpRequest request);
+    String resendOtp(ResendOtpRequest request);
 
     /**
      * Đăng nhập hệ thống bằng Gmail & Mật khẩu

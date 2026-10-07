@@ -36,7 +36,7 @@ public class HistoryServiceImpl implements HistoryService {
         } else if (userId != null) {
             page = historyRepository.findByUser_UserIdOrderByCreatedAtDesc(userId, pageable);
         } else {
-            return Page.empty(pageable);
+            page = historyRepository.findAllByOrderByCreatedAtDesc(pageable);
         }
         return page.map(this::mapToResponse);
     }

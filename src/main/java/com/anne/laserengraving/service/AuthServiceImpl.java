@@ -7,6 +7,7 @@ import com.anne.laserengraving.entity.UserEntity;
 import com.anne.laserengraving.exception.InvalidParameterException;
 import com.anne.laserengraving.exception.ResourceNotFoundException;
 import com.anne.laserengraving.repository.UserRepository;
+import com.anne.laserengraving.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -24,9 +25,10 @@ public class AuthServiceImpl implements AuthService {
     private final UserRepository userRepository;
     private final OtpService otpService;
     private final PasswordEncoder passwordEncoder;
+    private final JwtUtil jwtUtil;
 
     @Override
-    public void initiateRegister(RegisterRequest request) {
+    public String initiateRegister(RegisterRequest request) {
         String email = request.getEmail().trim().toLowerCase();
 
         // 1. Ràng buộc nghiêm ngặt chỉ chấp nhận Gmail
@@ -48,6 +50,7 @@ public class AuthServiceImpl implements AuthService {
         String otpCode = otpService.generateOtp();
         otpService.savePendingRegistration(email, request.getPassword(), otpCode);
         log.info("[AUTH] Đã khởi tạo tiến trình đăng ký và gửi mã OTP cho: {}", email);
+        return otpCode;
     }
 
     @Override
@@ -100,7 +103,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public void resendOtp(ResendOtpRequest request) {
+    public String resendOtp(ResendOtpRequest request) {
         String email = request.getEmail().trim().toLowerCase();
 
         if (!otpService.canResendOtp(email)) {
@@ -115,6 +118,7 @@ public class AuthServiceImpl implements AuthService {
         String newOtpCode = otpService.generateOtp();
         otpService.updateOtp(email, newOtpCode);
         log.info("[AUTH] Đã gửi lại mã OTP mới cho: {}", email);
+        return newOtpCode;
     }
 
     @Override
@@ -200,7 +204,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private AuthResponse buildAuthResponse(UserEntity user) {
-        String token = "laser-token-" + UUID.randomUUID();
+        String token = jwtUtil.generateToken(user.getEmail(), user.getUserId(), user.getRole());
         return AuthResponse.builder()
                 .token(token)
                 .tokenType("Bearer")
