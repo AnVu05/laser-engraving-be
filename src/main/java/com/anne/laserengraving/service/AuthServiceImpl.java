@@ -26,6 +26,7 @@ public class AuthServiceImpl implements AuthService {
     private final OtpService otpService;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final EmailService emailService;
 
     @Override
     public String initiateRegister(RegisterRequest request) {
@@ -49,7 +50,8 @@ public class AuthServiceImpl implements AuthService {
         // 4. Phát sinh mã OTP 6 số và lưu vào phiên chờ
         String otpCode = otpService.generateOtp();
         otpService.savePendingRegistration(email, request.getPassword(), otpCode);
-        log.info("[AUTH] Đã khởi tạo tiến trình đăng ký và gửi mã OTP cho: {}", email);
+        emailService.sendOtpEmail(email, otpCode);
+        log.info("[AUTH] Đã khởi tạo tiến trình đăng ký và phát mã OTP cho: {}", email);
         return otpCode;
     }
 
@@ -117,6 +119,7 @@ public class AuthServiceImpl implements AuthService {
 
         String newOtpCode = otpService.generateOtp();
         otpService.updateOtp(email, newOtpCode);
+        emailService.sendOtpEmail(email, newOtpCode);
         log.info("[AUTH] Đã gửi lại mã OTP mới cho: {}", email);
         return newOtpCode;
     }

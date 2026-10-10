@@ -49,6 +49,10 @@ app:
       - "http://localhost:5173"
       - "http://127.0.0.1:5173"
       - "http://localhost:3000"
+  mail:
+    api-key: "re_NKEfJfMh_6zo34wgm5zMq3a8xJjCV1oyk"
+    from-email: "Laser Studio <onboarding@resend.dev>"
+
 
 # Cấu hình tài liệu Swagger UI & OpenAPI 3.0
 springdoc:
