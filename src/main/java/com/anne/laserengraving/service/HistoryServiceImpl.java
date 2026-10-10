@@ -63,21 +63,13 @@ public class HistoryServiceImpl implements HistoryService {
     public HistoryItemResponse saveHistory(String email, Integer userId, SaveHistoryRequest request) {
         UserEntity user = null;
         if (email != null && !email.trim().isEmpty()) {
-            user = userRepository.findByEmail(email.trim().toLowerCase()).orElse(null);
-        }
-        if (user == null && userId != null) {
-            user = userRepository.findById(userId).orElse(null);
-        }
-        if (user == null) {
-            String targetEmail = (email != null && !email.trim().isEmpty()) ? email.trim().toLowerCase() : "operator@laser.local";
-            user = userRepository.findByEmail(targetEmail)
-                    .orElseGet(() -> userRepository.findAll().stream().findFirst()
-                            .orElseGet(() -> userRepository.save(UserEntity.builder()
-                                    .username("operator_" + System.currentTimeMillis())
-                                    .passwordHash("noop")
-                                    .email(targetEmail)
-                                    .role("OPERATOR")
-                                    .build())));
+            user = userRepository.findByEmail(email.trim().toLowerCase())
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng với email: " + email));
+        } else if (userId != null) {
+            user = userRepository.findById(userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng với ID: " + userId));
+        } else {
+            user = userRepository.findAll().stream().findFirst().orElse(null);
         }
 
         String rawFilename = request.getOriginalFilename();

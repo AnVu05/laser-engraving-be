@@ -134,10 +134,10 @@ public class AuthServiceImpl implements AuthService {
         }
 
         UserEntity user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new InvalidParameterException("Tài khoản Gmail hoặc mật khẩu không chính xác!"));
+                .orElseThrow(() -> new InvalidParameterException("Tài khoản hoặc mật khẩu không chính xác!"));
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            throw new InvalidParameterException("Tài khoản Gmail hoặc mật khẩu không chính xác!");
+            throw new InvalidParameterException("Tài khoản hoặc mật khẩu không chính xác!");
         }
 
         log.info("[AUTH] Người dùng {} đăng nhập thành công vào Laser Studio", email);

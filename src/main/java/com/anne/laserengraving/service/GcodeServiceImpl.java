@@ -99,7 +99,9 @@ public class GcodeServiceImpl implements GcodeService {
 
         // 6. Lưu lịch sử vào CSDL
         UserEntity user = resolveUser(userId);
-        LaserSettingsEntity setting = settingsRepository.findFirstByUser_UserId(user.getUserId()).orElse(null);
+        LaserSettingsEntity setting = (user != null)
+                ? settingsRepository.findFirstByUser_UserId(user.getUserId()).orElse(null)
+                : settingsRepository.findAll().stream().findFirst().orElse(null);
 
         GcodeHistoryEntity historyEntity = GcodeHistoryEntity.builder()
                 .user(user)
@@ -154,18 +156,9 @@ public class GcodeServiceImpl implements GcodeService {
 
     private UserEntity resolveUser(Integer userId) {
         if (userId != null) {
-            return userRepository.findById(userId).orElseGet(this::getOrCreateDefaultOperator);
+            return userRepository.findById(userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng với ID: " + userId));
         }
-        return getOrCreateDefaultOperator();
-    }
-
-    private UserEntity getOrCreateDefaultOperator() {
-        return userRepository.findByUsername("operator")
-                .orElseGet(() -> userRepository.save(UserEntity.builder()
-                        .username("operator")
-                        .passwordHash("noop")
-                        .email("operator@laser.local")
-                        .role("OPERATOR")
-                        .build()));
+        return userRepository.findAll().stream().findFirst().orElse(null);
     }
 }

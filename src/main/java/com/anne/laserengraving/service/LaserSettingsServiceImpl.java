@@ -4,6 +4,7 @@ import com.anne.laserengraving.dto.request.LaserSettingsUpdateRequest;
 import com.anne.laserengraving.dto.response.LaserSettingsResponse;
 import com.anne.laserengraving.entity.LaserSettingsEntity;
 import com.anne.laserengraving.entity.UserEntity;
+import com.anne.laserengraving.exception.ResourceNotFoundException;
 import com.anne.laserengraving.repository.LaserSettingsRepository;
 import com.anne.laserengraving.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -30,19 +31,22 @@ public class LaserSettingsServiceImpl implements LaserSettingsService {
     @Override
     @Transactional
     public LaserSettingsResponse updateSettings(Integer userId, LaserSettingsUpdateRequest request) {
-        LaserSettingsEntity entity = settingsRepository.findFirstByUser_UserId(userId)
-                .orElseGet(() -> {
-                    UserEntity user = userRepository.findById(userId)
-                            .orElseGet(() -> userRepository.save(UserEntity.builder()
-                                    .username("default_operator")
-                                    .passwordHash("noop")
-                                    .email("operator@laser.local")
-                                    .role("OPERATOR")
-                                    .build()));
-                    return LaserSettingsEntity.builder()
-                            .user(user)
-                            .build();
-                });
+        LaserSettingsEntity entity = (userId != null)
+                ? settingsRepository.findFirstByUser_UserId(userId).orElse(null)
+                : settingsRepository.findAll().stream().findFirst().orElse(null);
+
+        if (entity == null) {
+            UserEntity user = null;
+            if (userId != null) {
+                user = userRepository.findById(userId)
+                        .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng với ID: " + userId));
+            } else {
+                user = userRepository.findAll().stream().findFirst().orElse(null);
+            }
+            entity = LaserSettingsEntity.builder()
+                    .user(user)
+                    .build();
+        }
 
         entity.setProfileName(request.getProfileName());
         entity.setDefaultSpeed(request.getDefaultSpeed());

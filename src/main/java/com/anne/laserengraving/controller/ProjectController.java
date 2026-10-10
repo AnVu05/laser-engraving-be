@@ -35,7 +35,7 @@ public class ProjectController {
                 .body(ApiResponse.success("Lưu dự án thành công!", response));
     }
 
-    @Operation(summary = "Lấy danh sách dự án của người dùng", description = "Trả về toàn bộ các dự án đã lưu theo tài khoản Gmail (hoặc dự án mẫu nếu không truyền email)")
+    @Operation(summary = "Lấy danh sách dự án của người dùng", description = "Trả về toàn bộ các dự án đã lưu theo tài khoản Gmail của người dùng")
     @GetMapping
     public ResponseEntity<ApiResponse<List<ProjectResponse>>> getProjects(
             @Parameter(description = "Gmail của tài khoản người dùng (nếu có)")
