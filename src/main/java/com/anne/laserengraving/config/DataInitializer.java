@@ -35,6 +35,37 @@ public class DataInitializer implements ApplicationRunner {
             log.warn("[DATA INITIALIZER] Lỗi khi nạp vật liệu chuẩn hệ thống: {}", ex.getMessage());
         }
 
+        // Khởi tạo máy khắc Laser mẫu LASER-HN-001 (Makerbase MKS DLC32 V2.1)
+        initDefaultDevice();
+
         log.info("========== [DATA INITIALIZER] Hoàn tất nạp dữ liệu chuẩn hệ thống ==========");
     }
+
+    private final com.anne.laserengraving.repository.DeviceRepository deviceRepository;
+
+    private void initDefaultDevice() {
+        try {
+            if (!deviceRepository.existsByDeviceCode("LASER-HN-001")) {
+                com.anne.laserengraving.entity.DeviceEntity defaultDevice = com.anne.laserengraving.entity.DeviceEntity.builder()
+                        .deviceCode("LASER-HN-001")
+                        .deviceName("Máy Khắc Laser Tiêu Chuẩn Makerbase MKS DLC32 #01 (Xưởng Hà Nội)")
+                        .connectionStatus("ONLINE")
+                        .ipAddress("192.168.1.105")
+                        .firmwareVersion("GRBL 1.1h (MKS DLC32 V2.1 ESP32)")
+                        .maxWidthMm(300.0)
+                        .maxHeightMm(200.0)
+                        .maxSpeedMmMin(1500)
+                        .maxPowerS(1000)
+                        .apiKeyHash("$2a$10$e7qA8Fv2x2Q9kFq7hR8N4eH4eE3L8n8G5q5y2h3j4k5l6m7n8o9p")
+                        .lastHeartbeat(java.time.LocalDateTime.now())
+                        .isActive(true)
+                        .build();
+                deviceRepository.save(defaultDevice);
+                log.info("[DATA INITIALIZER] Đã khởi tạo thiết bị mẫu: LASER-HN-001 (Makerbase MKS DLC32 V2.1)");
+            }
+        } catch (Exception ex) {
+            log.warn("[DATA INITIALIZER] Lỗi khi nạp thiết bị mẫu: {}", ex.getMessage());
+        }
+    }
 }
+
