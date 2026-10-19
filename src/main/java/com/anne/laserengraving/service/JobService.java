@@ -53,4 +53,9 @@ public interface JobService {
      * Hủy bỏ Job
      */
     void cancelJob(String jobCode);
+
+    /**
+     * Xác nhận an toàn vật liệu tại chỗ bởi Quản máy / Admin
+     */
+    void confirmJob(String jobCode);
 }

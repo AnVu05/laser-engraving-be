@@ -144,4 +144,11 @@ public class JobController {
         jobService.cancelJob(jobCode);
         return ResponseEntity.ok(ApiResponse.ok(null, "Hủy Job thành công"));
     }
+
+    @PostMapping("/{jobCode}/confirm")
+    @Operation(summary = "Xác nhận an toàn vật liệu tại chỗ bởi Quản máy / Admin")
+    public ResponseEntity<ApiResponse<Void>> confirmJob(@PathVariable("jobCode") String jobCode) {
+        jobService.confirmJob(jobCode);
+        return ResponseEntity.ok(ApiResponse.ok(null, "Xác nhận an toàn Job thành công"));
+    }
 }

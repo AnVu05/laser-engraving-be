@@ -244,6 +244,41 @@ public class JobServiceImpl implements JobService {
         log.info("[CANCEL] Đã hủy bỏ Job: {}", jobCode);
     }
 
+    @Override
+    @Transactional
+    public void confirmJob(String jobCode) {
+        EngravingJobEntity job = jobRepository.findByJobCode(jobCode)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy Job có mã: " + jobCode));
+
+        job.setStatus("PRINTING");
+        if (job.getStartedAt() == null) job.setStartedAt(java.time.LocalDateTime.now());
+        if (job.getConfirmedAt() == null) job.setConfirmedAt(java.time.LocalDateTime.now());
+        jobRepository.save(job);
+
+        String deviceCode = job.getDevice() != null ? job.getDevice().getDeviceCode() : "LASER-HN-001";
+        if (job.getDevice() != null) {
+            job.getDevice().setConnectionStatus("BUSY");
+            deviceRepository.save(job.getDevice());
+        }
+
+        com.anne.laserengraving.dto.websocket.JobStatusUpdateMessage statusMsg =
+                com.anne.laserengraving.dto.websocket.JobStatusUpdateMessage.builder()
+                        .type("JOB_STATUS_CHANGE")
+                        .deviceCode(deviceCode)
+                        .jobCode(jobCode)
+                        .status("PRINTING")
+                        .message("Quản máy đã xác nhận an toàn vật liệu. Bắt đầu phát tia khắc!")
+                        .timestamp(System.currentTimeMillis())
+                        .build();
+
+        // Bắn thông báo tới thiết bị và các kênh Client
+        messagingTemplate.convertAndSend("/topic/device/" + deviceCode + "/jobs", statusMsg);
+        messagingTemplate.convertAndSend("/topic/jobs/" + jobCode + "/status", statusMsg);
+        messagingTemplate.convertAndSend("/topic/client/status", statusMsg);
+
+        log.info("[CONFIRM] Quản máy đã phê duyệt an toàn Job: {} trên thiết bị: {}", jobCode, deviceCode);
+    }
+
     private void authenticateDeviceAccess(DeviceEntity device, String authHeader, String deviceCodeHeader) {
         // Kiểm tra Device Code header nếu có gửi kèm
         if (deviceCodeHeader != null && !deviceCodeHeader.isBlank()) {

@@ -83,4 +83,12 @@ public class DeviceEntity {
     public void preUpdate() {
         updatedAt = LocalDateTime.now();
     }
+
+    public String getStatus() {
+        return this.connectionStatus;
+    }
+
+    public void setStatus(String status) {
+        this.connectionStatus = status;
+    }
 }
