@@ -6,6 +6,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import java.security.SecureRandom;
+import java.util.Base64;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -56,37 +58,40 @@ public class DataInitializer implements ApplicationRunner {
 
     private void initDefaultDevice() {
         try {
-            String defaultToken = "mk_sec_laser_hn_001_secret";
             if (!deviceRepository.existsByDeviceCode("LASER-HN-001")) {
                 com.anne.laserengraving.entity.DeviceEntity defaultDevice = com.anne.laserengraving.entity.DeviceEntity
                         .builder()
                         .deviceCode("LASER-HN-001")
                         .deviceName("Máy Khắc Laser Tiêu Chuẩn Makerbase MKS DLC32 #01 (Xưởng Hà Nội)")
-                        .connectionStatus("ONLINE")
-                        .ipAddress("192.168.1.105")
+                        .connectionStatus("OFFLINE")
                         .firmwareVersion("GRBL 1.1h (MKS DLC32 V2.1 ESP32)")
                         .maxWidthMm(300.0)
                         .maxHeightMm(200.0)
                         .maxSpeedMmMin(1500)
                         .maxPowerS(1000)
-                        .apiKeyHash(passwordEncoder.encode(defaultToken))
-                        .lastHeartbeat(java.time.LocalDateTime.now())
+                        .apiKeyHash(passwordEncoder.encode(createUnknownToken()))
                         .isActive(true)
                         .build();
                 deviceRepository.save(defaultDevice);
                 log.info("[DATA INITIALIZER] Đã khởi tạo thiết bị mẫu: LASER-HN-001 (Makerbase MKS DLC32 V2.1)");
             } else {
                 deviceRepository.findByDeviceCode("LASER-HN-001").ifPresent(device -> {
-                    if (device.getApiKeyHash() == null
-                            || !passwordEncoder.matches(defaultToken, device.getApiKeyHash())) {
-                        device.setApiKeyHash(passwordEncoder.encode(defaultToken));
+                    if (device.getApiKeyHash() != null
+                            && passwordEncoder.matches("mk_sec_laser_hn_001_secret", device.getApiKeyHash())) {
+                        device.setApiKeyHash(passwordEncoder.encode(createUnknownToken()));
                         deviceRepository.save(device);
-                        log.info("[DATA INITIALIZER] Đã cập nhật apiKeyHash chuẩn cho thiết bị: LASER-HN-001");
+                        log.warn("[DATA INITIALIZER] Đã vô hiệu hóa credential mặc định đã biết của LASER-HN-001; cần cấp token mới từ dashboard.");
                     }
                 });
             }
         } catch (Exception ex) {
             log.warn("[DATA INITIALIZER] Lỗi khi nạp thiết bị mẫu: {}", ex.getMessage());
         }
+    }
+
+    private String createUnknownToken() {
+        byte[] secretBytes = new byte[32];
+        new SecureRandom().nextBytes(secretBytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(secretBytes);
     }
 }

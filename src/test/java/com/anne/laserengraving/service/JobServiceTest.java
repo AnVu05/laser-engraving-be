@@ -184,10 +184,8 @@ class JobServiceTest {
                 .build();
 
         when(deviceRepository.findByDeviceCode("LASER-HN-001")).thenReturn(Optional.of(testDevice));
-        doThrow(new LaserSafetyException("Vùng khắc vượt quá khổ làm việc an toàn của máy"))
-                .when(safetyValidator).validateParameters(eq(350.0), eq(100.0), anyInt(), anyInt(), anyInt());
-
-        assertThrows(LaserSafetyException.class, () -> jobService.dispatchJob(request));
+        assertThrows(com.anne.laserengraving.exception.InvalidParameterException.class,
+                () -> jobService.dispatchJob(request));
         verify(jobRepository, never()).save(any());
     }
 
@@ -206,12 +204,28 @@ class JobServiceTest {
         when(jobRepository.findById(100L)).thenReturn(Optional.of(job));
         when(fileStorageService.loadGcodeFileAsResource("stored_logo.gcode"))
                 .thenReturn(new ByteArrayResource(validGcodeContent.getBytes(StandardCharsets.UTF_8)));
+        when(passwordEncoder.matches("mk_sec_laser_hn_001_secret", testDevice.getApiKeyHash())).thenReturn(true);
 
-        // Gửi Bearer token mặc định
+        // Dùng credential hợp lệ đã được provision cho thiết bị.
         Resource resource = jobService.downloadJobFile(100L, "Bearer mk_sec_laser_hn_001_secret", "LASER-HN-001");
 
         assertNotNull(resource);
         assertTrue(resource.exists());
+    }
+
+    @Test
+    @DisplayName("Từ chối tải G-code khi thiếu credential của thiết bị")
+    void testDownloadJobFile_MissingCredentials_Throws() {
+        EngravingJobEntity job = EngravingJobEntity.builder()
+                .id(100L)
+                .jobCode("JOB-20261020-TEST")
+                .device(testDevice)
+                .storedFilePath("stored_logo.gcode")
+                .build();
+        when(jobRepository.findById(100L)).thenReturn(Optional.of(job));
+
+        assertThrows(SecurityException.class, () -> jobService.downloadJobFile(100L, null, null));
+        verify(fileStorageService, never()).loadGcodeFileAsResource(anyString());
     }
 
     @Test

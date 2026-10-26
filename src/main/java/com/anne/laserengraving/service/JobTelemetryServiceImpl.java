@@ -32,6 +32,10 @@ public class JobTelemetryServiceImpl implements JobTelemetryService {
         if (progress == null || progress.getJobCode() == null) return;
 
         jobRepository.findByJobCode(progress.getJobCode()).ifPresent(job -> {
+            if (job.getDevice() == null || !job.getDevice().getDeviceCode().equals(progress.getDeviceCode())) {
+                log.warn("[Telemetry] Bỏ qua telemetry Job {} từ thiết bị không khớp.", progress.getJobCode());
+                return;
+            }
             job.setCurrentProgress(progress.getProgressPercent());
             if ("PRINTING".equalsIgnoreCase(progress.getStatus())) {
                 job.setStatus("PRINTING");
@@ -77,6 +81,10 @@ public class JobTelemetryServiceImpl implements JobTelemetryService {
         if (statusUpdate == null || statusUpdate.getJobCode() == null) return;
 
         jobRepository.findByJobCode(statusUpdate.getJobCode()).ifPresent(job -> {
+            if (job.getDevice() == null || !job.getDevice().getDeviceCode().equals(statusUpdate.getDeviceCode())) {
+                log.warn("[Job Status] Bỏ qua cập nhật Job {} từ thiết bị không khớp.", statusUpdate.getJobCode());
+                return;
+            }
             job.setStatus(statusUpdate.getStatus());
 
             if ("AWAITING_ONSITE_CONFIRMATION".equalsIgnoreCase(statusUpdate.getStatus())) {

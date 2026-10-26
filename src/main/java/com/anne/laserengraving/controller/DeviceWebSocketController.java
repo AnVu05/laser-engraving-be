@@ -9,7 +9,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
+import org.springframework.messaging.handler.annotation.Header;
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.stereotype.Controller;
+
+import java.util.Map;
 
 @Controller
 @RequiredArgsConstructor
@@ -24,7 +28,9 @@ public class DeviceWebSocketController {
      * Destination: /app/device/heartbeat
      */
     @MessageMapping("/device/heartbeat")
-    public void handleDeviceHeartbeat(@Payload DeviceHeartbeatMessage message) {
+    public void handleDeviceHeartbeat(@Payload DeviceHeartbeatMessage message,
+                                      @Header(SimpMessageHeaderAccessor.SESSION_ATTRIBUTES) Map<String, Object> attributes) {
+        message.setDeviceCode(authenticatedDevice(attributes));
         log.debug("[WS IN] Heartbeat từ thiết bị: {}", message.getDeviceCode());
         deviceService.updateHeartbeat(message);
     }
@@ -34,7 +40,9 @@ public class DeviceWebSocketController {
      * Destination: /app/device/telemetry
      */
     @MessageMapping("/device/telemetry")
-    public void handleDeviceTelemetry(@Payload JobProgressMessage message) {
+    public void handleDeviceTelemetry(@Payload JobProgressMessage message,
+                                      @Header(SimpMessageHeaderAccessor.SESSION_ATTRIBUTES) Map<String, Object> attributes) {
+        message.setDeviceCode(authenticatedDevice(attributes));
         log.info("[WS IN] Telemetry từ thiết bị {}: Job {}, Tiến độ {}%",
                 message.getDeviceCode(), message.getJobCode(), message.getProgressPercent());
         jobTelemetryService.processProgressUpdate(message);
@@ -45,9 +53,28 @@ public class DeviceWebSocketController {
      * Destination: /app/device/status
      */
     @MessageMapping("/device/status")
-    public void handleDeviceJobStatus(@Payload JobStatusUpdateMessage message) {
+    public void handleDeviceJobStatus(@Payload JobStatusUpdateMessage message,
+                                      @Header(SimpMessageHeaderAccessor.SESSION_ATTRIBUTES) Map<String, Object> attributes) {
+        message.setDeviceCode(authenticatedDevice(attributes));
         log.info("[WS IN] Trạng thái Job {} từ thiết bị {}: {}",
                 message.getJobCode(), message.getDeviceCode(), message.getStatus());
         jobTelemetryService.processStatusUpdate(message);
+    }
+
+    @MessageMapping("/device/config-applied")
+    public void handleDeviceConfigApplied(@Payload Map<String, Object> message,
+                                          @Header(SimpMessageHeaderAccessor.SESSION_ATTRIBUTES) Map<String, Object> attributes) {
+        Object version = message.get("configVersion");
+        if (version instanceof Number number) {
+            deviceService.acknowledgeDeviceConfig(authenticatedDevice(attributes), number.longValue());
+        }
+    }
+
+    private String authenticatedDevice(Map<String, Object> attributes) {
+        Object code = attributes == null ? null : attributes.get("authenticatedDeviceCode");
+        if (!(code instanceof String deviceCode) || deviceCode.isBlank()) {
+            throw new SecurityException("Phiên thiết bị chưa được xác thực.");
+        }
+        return deviceCode;
     }
 }

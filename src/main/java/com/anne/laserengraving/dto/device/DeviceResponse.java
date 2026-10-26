@@ -22,6 +22,8 @@ public class DeviceResponse {
     private Double maxHeightMm;
     private Integer maxSpeedMmMin;
     private Integer maxPowerS;
+    private Long configVersion;
+    private Long configAppliedVersion;
     private LocalDateTime lastHeartbeat;
     private Boolean isActive;
 }

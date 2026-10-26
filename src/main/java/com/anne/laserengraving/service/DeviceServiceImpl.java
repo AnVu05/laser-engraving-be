@@ -2,6 +2,7 @@ package com.anne.laserengraving.service;
 
 import com.anne.laserengraving.dto.device.DeviceResponse;
 import com.anne.laserengraving.dto.websocket.DeviceHeartbeatMessage;
+import com.anne.laserengraving.dto.request.DeviceConfigUpdateRequest;
 import com.anne.laserengraving.entity.DeviceEntity;
 import com.anne.laserengraving.exception.ResourceNotFoundException;
 import com.anne.laserengraving.repository.DeviceRepository;
@@ -43,6 +44,35 @@ public class DeviceServiceImpl implements DeviceService {
 
     @Override
     @Transactional
+    public DeviceResponse updateDeviceConfig(String deviceCode, DeviceConfigUpdateRequest request) {
+        DeviceEntity device = deviceRepository.findByDeviceCode(deviceCode)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy thiết bị có mã: " + deviceCode));
+
+        device.setMaxWidthMm(request.getMaxWidthMm());
+        device.setMaxHeightMm(request.getMaxHeightMm());
+        device.setMaxSpeedMmMin(request.getMaxSpeedMmMin());
+        device.setMaxPowerS(request.getMaxPowerS());
+        device.setConfigVersion(device.getConfigVersion() == null ? 1L : device.getConfigVersion() + 1L);
+        deviceRepository.save(device);
+
+        messagingTemplate.convertAndSend("/topic/device/" + deviceCode + "/config", mapToResponse(device));
+        return mapToResponse(device);
+    }
+
+    @Override
+    @Transactional
+    public void acknowledgeDeviceConfig(String deviceCode, Long configVersion) {
+        deviceRepository.findByDeviceCode(deviceCode).ifPresent(device -> {
+            if (device.getConfigVersion() != null && device.getConfigVersion().equals(configVersion)) {
+                device.setConfigAppliedVersion(configVersion);
+                deviceRepository.save(device);
+                messagingTemplate.convertAndSend("/topic/devices/config", mapToResponse(device));
+            }
+        });
+    }
+
+    @Override
+    @Transactional
     public void updateHeartbeat(DeviceHeartbeatMessage heartbeat) {
         if (heartbeat == null || heartbeat.getDeviceCode() == null) {
             return;
@@ -58,6 +88,11 @@ public class DeviceServiceImpl implements DeviceService {
             }
             
             deviceRepository.save(device);
+
+            Long reportedVersion = heartbeat.getConfigVersion();
+            if (reportedVersion == null || !reportedVersion.equals(device.getConfigVersion())) {
+                messagingTemplate.convertAndSend("/topic/device/" + device.getDeviceCode() + "/config", mapToResponse(device));
+            }
 
             // Nếu vừa mới từ OFFLINE -> ONLINE, thông báo cho Web Client
             if (wasOffline) {
@@ -111,6 +146,8 @@ public class DeviceServiceImpl implements DeviceService {
                 .maxHeightMm(entity.getMaxHeightMm())
                 .maxSpeedMmMin(entity.getMaxSpeedMmMin())
                 .maxPowerS(entity.getMaxPowerS())
+                .configVersion(entity.getConfigVersion())
+                .configAppliedVersion(entity.getConfigAppliedVersion())
                 .lastHeartbeat(entity.getLastHeartbeat())
                 .isActive(entity.getIsActive())
                 .build();

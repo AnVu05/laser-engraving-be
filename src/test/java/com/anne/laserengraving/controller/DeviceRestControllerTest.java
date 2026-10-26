@@ -33,6 +33,9 @@ class DeviceRestControllerTest {
     @Mock
     private DeviceService deviceService;
 
+    @Mock
+    private com.anne.laserengraving.service.DeviceCredentialService credentialService;
+
     @InjectMocks
     private DeviceRestController deviceRestController;
 
@@ -76,6 +79,8 @@ class DeviceRestControllerTest {
                 .build();
 
         mockMvc.perform(post("/api/v1/devices/heartbeat")
+                        .header("Authorization", "Bearer unit-test-token")
+                        .header("X-Device-Code", "LASER-HN-001")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(heartbeat)))
                 .andExpect(status().isOk())

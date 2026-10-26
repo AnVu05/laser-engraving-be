@@ -30,11 +30,15 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class JobServiceImpl implements JobService {
+
+    private static final Pattern GCODE_PARAMETER = Pattern.compile("(?i)([XYFS])\\s*(-?\\d+(?:\\.\\d+)?)");
 
     private final EngravingJobRepository jobRepository;
     private final DeviceRepository deviceRepository;
@@ -106,9 +110,15 @@ public class JobServiceImpl implements JobService {
         int speed = request.getFeedRate() != null ? request.getFeedRate() : 1500;
         int power = request.getLaserPower() != null ? request.getLaserPower() : 800;
 
+        if (width > device.getMaxWidthMm() || height > device.getMaxHeightMm()
+                || speed > device.getMaxSpeedMmMin() || power > device.getMaxPowerS()) {
+            throw new InvalidParameterException("Thông số job vượt quá giới hạn cấu hình của thiết bị " + device.getDeviceCode());
+        }
+
         // Tiền kiểm định an toàn theo chuẩn máy
         safetyValidator.validateParameters(width, height, speed, power, 254);
         safetyValidator.validateGcodeLines(lines);
+        validateDeviceGcodeLimits(lines, device);
 
         // 4. Lưu trữ tệp vật lý vào FileStorage
         String storedFilePath = fileStorageService.storeGcodeFile(filename, gcodeContent);
@@ -280,6 +290,15 @@ public class JobServiceImpl implements JobService {
     }
 
     private void authenticateDeviceAccess(DeviceEntity device, String authHeader, String deviceCodeHeader) {
+        if (!Boolean.TRUE.equals(device.getIsActive())) {
+            throw new SecurityException("Thiết bị đã bị vô hiệu hóa.");
+        }
+        if (deviceCodeHeader == null || deviceCodeHeader.isBlank()) {
+            throw new SecurityException("Thiếu mã thiết bị X-Device-Code.");
+        }
+        if (authHeader == null || !authHeader.startsWith("Bearer ") || authHeader.substring(7).isBlank()) {
+            throw new SecurityException("Thiếu Bearer token của thiết bị.");
+        }
         // Kiểm tra Device Code header nếu có gửi kèm
         if (deviceCodeHeader != null && !deviceCodeHeader.isBlank()) {
             if (!device.getDeviceCode().equalsIgnoreCase(deviceCodeHeader.trim())) {
@@ -295,7 +314,7 @@ public class JobServiceImpl implements JobService {
                     ? authHeader.substring(7).trim()
                     : authHeader.trim();
 
-            boolean isValid = validateToken(device, token);
+            boolean isValid = passwordEncoder.matches(token, device.getApiKeyHash());
             if (!isValid) {
                 log.warn("[AUTH DEVICE] Token '{}' không hợp lệ cho thiết bị '{}'", token, device.getDeviceCode());
                 throw new SecurityException("Khóa bảo mật Bearer Token của thiết bị không chính xác.");
@@ -303,29 +322,28 @@ public class JobServiceImpl implements JobService {
         }
     }
 
-    private boolean validateToken(DeviceEntity device, String token) {
-        if (token == null || token.isBlank()) return false;
-
-        // 1. Khóa mặc định của firmware
-        if ("mk_sec_laser_hn_001_secret".equals(token)) {
-            return true;
-        }
-
-        // 2. Đối soát trực tiếp nếu lưu nguyên bản
-        if (token.equals(device.getApiKeyHash())) {
-            return true;
-        }
-
-        // 3. Đối soát mã băm BCrypt
-        if (device.getApiKeyHash() != null && device.getApiKeyHash().startsWith("$2")) {
-            try {
-                return passwordEncoder.matches(token, device.getApiKeyHash());
-            } catch (Exception e) {
-                log.debug("BCrypt match failed: {}", e.getMessage());
+    private void validateDeviceGcodeLimits(List<String> lines, DeviceEntity device) {
+        for (int index = 0; index < lines.size(); index++) {
+            String line = lines.get(index).split(";", 2)[0].trim();
+            if (line.isEmpty()) continue;
+            boolean rapidMove = line.matches("(?i)^G0\\b.*");
+            Matcher matcher = GCODE_PARAMETER.matcher(line);
+            while (matcher.find()) {
+                char parameter = Character.toUpperCase(matcher.group(1).charAt(0));
+                double value = Double.parseDouble(matcher.group(2));
+                boolean unsafe = switch (parameter) {
+                    case 'X' -> value < 0 || value > device.getMaxWidthMm();
+                    case 'Y' -> value < 0 || value > device.getMaxHeightMm();
+                    case 'F' -> !rapidMove && value > device.getMaxSpeedMmMin();
+                    case 'S' -> value < 0 || value > device.getMaxPowerS();
+                    default -> false;
+                };
+                if (unsafe) {
+                    throw new InvalidParameterException("G-code dòng " + (index + 1)
+                            + " vượt giới hạn cấu hình của máy " + device.getDeviceCode() + " (" + parameter + value + ").");
+                }
             }
         }
-
-        return false;
     }
 
     private JobDispatchResponse mapToResponse(EngravingJobEntity entity, String downloadUrl) {

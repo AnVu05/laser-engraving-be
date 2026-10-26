@@ -13,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.mockito.Mockito.verify;
+import java.util.Map;
 
 @ExtendWith(MockitoExtension.class)
 class DeviceWebSocketControllerTest {
@@ -34,7 +35,7 @@ class DeviceWebSocketControllerTest {
                 .status("ONLINE")
                 .build();
 
-        webSocketController.handleDeviceHeartbeat(msg);
+        webSocketController.handleDeviceHeartbeat(msg, Map.of("authenticatedDeviceCode", "LASER-HN-001"));
         verify(deviceService).updateHeartbeat(msg);
     }
 
@@ -49,7 +50,7 @@ class DeviceWebSocketControllerTest {
                 .totalLines(15000)
                 .build();
 
-        webSocketController.handleDeviceTelemetry(progress);
+        webSocketController.handleDeviceTelemetry(progress, Map.of("authenticatedDeviceCode", "LASER-HN-001"));
         verify(jobTelemetryService).processProgressUpdate(progress);
     }
 
@@ -62,7 +63,7 @@ class DeviceWebSocketControllerTest {
                 .status("AWAITING_ONSITE_CONFIRMATION")
                 .build();
 
-        webSocketController.handleDeviceJobStatus(status);
+        webSocketController.handleDeviceJobStatus(status, Map.of("authenticatedDeviceCode", "LASER-HN-001"));
         verify(jobTelemetryService).processStatusUpdate(status);
     }
 }

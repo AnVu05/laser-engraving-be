@@ -16,4 +16,5 @@ public class DeviceHeartbeatMessage {
     private Long freeHeap;         // Bộ nhớ RAM còn trống trên ESP32
     private Integer wifiRssi;      // Cường độ sóng WiFi (dBm)
     private Long timestamp;
+    private Long configVersion;
 }

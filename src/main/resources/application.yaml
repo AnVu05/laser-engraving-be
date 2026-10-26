@@ -1,4 +1,4 @@
-server:
+﻿server:
   port: 8080
 
 spring:
@@ -45,13 +45,14 @@ app:
       min-dpi: 100
       max-dpi: 600
   cors:
-    allowed-origins:
-      - "http://localhost:5173"
-      - "http://127.0.0.1:5173"
-      - "http://localhost:3000"
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000}
+  jwt:
+    secret: ${APP_JWT_SECRET:local-development-only-change-before-deploying}
+    expiration-ms: ${APP_JWT_EXPIRATION_MS:604800000}
+    cookie-secure: ${APP_JWT_COOKIE_SECURE:false}
   mail:
-    api-key: "re_NKEfJfMh_6zo34wgm5zMq3a8xJjCV1oyk"
-    from-email: "Laser Studio <onboarding@resend.dev>"
+    api-key: ${RESEND_API_KEY:}
+    from-email: ${RESEND_FROM_EMAIL:Laser Studio <onboarding@resend.dev>}
 
 
 # Cấu hình tài liệu Swagger UI & OpenAPI 3.0
@@ -66,3 +67,4 @@ springdoc:
     try-it-out-enabled: true
     display-request-duration: true
     filter: true
+
