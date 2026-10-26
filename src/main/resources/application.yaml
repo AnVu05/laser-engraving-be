@@ -54,7 +54,7 @@ app:
     api-key: ${RESEND_API_KEY:}
     from-email: ${RESEND_FROM_EMAIL:Laser Studio <onboarding@resend.dev>}
   render:
-    gateway-url: ${RENDER_GATEWAY_URL:http://localhost:8081}
+    gateway-url: ${RENDER_GATEWAY_URL:https://laseriotservice.onrender.com}
     secret-key: ${RENDER_INTERNAL_SECRET_KEY:laser-internal-secret-key-change-me}
     enabled: ${RENDER_GATEWAY_ENABLED:true}
 
