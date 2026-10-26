@@ -39,7 +39,6 @@ public class DataInitializer implements ApplicationRunner {
     }
 
     @Override
-    @Transactional
     public void run(ApplicationArguments args) {
         log.info("========== [DATA INITIALIZER] Bắt đầu kiểm tra và khởi tạo dữ liệu chuẩn hệ thống ==========");
 

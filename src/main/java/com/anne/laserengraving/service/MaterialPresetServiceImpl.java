@@ -27,15 +27,6 @@ public class MaterialPresetServiceImpl implements MaterialPresetService {
     private final MaterialPresetRepository materialPresetRepository;
     private final UserRepository userRepository;
 
-    @PostConstruct
-    public void init() {
-        try {
-            initDefaultPresets();
-        } catch (Exception ex) {
-            log.warn("Không thể tự động khởi tạo vật liệu mẫu lúc khởi động: {}", ex.getMessage());
-        }
-    }
-
     @Override
     @Transactional
     public void initDefaultPresets() {
