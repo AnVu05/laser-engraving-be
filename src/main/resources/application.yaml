@@ -1,4 +1,4 @@
-﻿server:
+server:
   port: 8080
 
 spring:
@@ -53,6 +53,10 @@ app:
   mail:
     api-key: ${RESEND_API_KEY:}
     from-email: ${RESEND_FROM_EMAIL:Laser Studio <onboarding@resend.dev>}
+  render:
+    gateway-url: ${RENDER_GATEWAY_URL:http://localhost:8081}
+    secret-key: ${RENDER_INTERNAL_SECRET_KEY:laser-internal-secret-key-change-me}
+    enabled: ${RENDER_GATEWAY_ENABLED:true}
 
 
 # Cấu hình tài liệu Swagger UI & OpenAPI 3.0

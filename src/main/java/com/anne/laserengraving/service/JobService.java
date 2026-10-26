@@ -58,4 +58,15 @@ public interface JobService {
      * Xác nhận an toàn vật liệu tại chỗ bởi Quản máy / Admin
      */
     void confirmJob(String jobCode);
+
+    /**
+     * Lấy telemetry thời gian thực (tiến độ, toạ độ X/Y, cảm biến) từ Render IoT Gateway
+     */
+    java.util.Map<String, Object> getJobTelemetryFromGateway(String jobCode);
+
+    /**
+     * Gửi lệnh tức thời (PAUSE, RESUME, CANCEL, HOME) sang Render IoT Gateway xuống bo mạch
+     */
+    boolean sendDeviceCommand(String deviceCode, String action, String jobCode, String reason);
 }
+

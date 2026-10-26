@@ -47,6 +47,7 @@ public class JobServiceImpl implements JobService {
     private final GcodeSafetyValidator safetyValidator;
     private final SimpMessagingTemplate messagingTemplate;
     private final PasswordEncoder passwordEncoder;
+    private final RenderIotGatewayClient renderGatewayClient;
 
     @Override
     @Transactional
@@ -181,6 +182,23 @@ public class JobServiceImpl implements JobService {
         // Kênh chung Web Client Studio: /topic/client/jobs
         messagingTemplate.convertAndSend("/topic/client/jobs", notification);
 
+        // 8. Chuyển tiếp Job sang Render IoT Gateway (nếu có cấu hình)
+        try {
+            renderGatewayClient.dispatchJobToGateway(
+                    job.getJobCode(),
+                    device.getDeviceCode(),
+                    job.getOriginalFilename(),
+                    gcodeContent,
+                    job.getTargetWidthMm(),
+                    job.getTargetHeightMm(),
+                    job.getFeedRate(),
+                    job.getLaserPower(),
+                    job.getMaterialType()
+            );
+        } catch (Exception e) {
+            log.warn("[DISPATCH] Bỏ qua lỗi chuyển tiếp sang Render Gateway: {}", e.getMessage());
+        }
+
         return mapToResponse(job, downloadUrl);
     }
 
@@ -252,6 +270,14 @@ public class JobServiceImpl implements JobService {
         // Bắn thông báo cập nhật trạng thái
         messagingTemplate.convertAndSend("/topic/jobs/" + jobCode + "/status", "CANCELLED");
         log.info("[CANCEL] Đã hủy bỏ Job: {}", jobCode);
+
+        // Chuyển tiếp lệnh dừng xuống bo mạch qua Render Gateway
+        try {
+            String devCode = job.getDevice() != null ? job.getDevice().getDeviceCode() : "LASER-HN-001";
+            renderGatewayClient.sendDeviceCommand(devCode, "CANCEL", jobCode, "User cancelled from Web Studio");
+        } catch (Exception e) {
+            log.warn("[CANCEL] Bỏ qua lỗi gửi lệnh CANCEL sang Render Gateway: {}", e.getMessage());
+        }
     }
 
     @Override
@@ -366,5 +392,26 @@ public class JobServiceImpl implements JobService {
                 .downloadUrl(downloadUrl)
                 .dispatchedAt(entity.getDispatchedAt())
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> getJobTelemetryFromGateway(String jobCode) {
+        EngravingJobEntity job = jobRepository.findByJobCode(jobCode)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy Job có mã: " + jobCode));
+
+        String devCode = job.getDevice() != null ? job.getDevice().getDeviceCode() : "LASER-HN-001";
+        return renderGatewayClient.getDeviceTelemetry(devCode)
+                .orElse(java.util.Map.of(
+                        "jobCode", jobCode,
+                        "deviceCode", devCode,
+                        "progressPercent", job.getCurrentProgress() != null ? job.getCurrentProgress() : 0.0,
+                        "status", job.getStatus()
+                ));
+    }
+
+    @Override
+    public boolean sendDeviceCommand(String deviceCode, String action, String jobCode, String reason) {
+        return renderGatewayClient.sendDeviceCommand(deviceCode, action, jobCode, reason);
     }
 }

@@ -57,6 +57,9 @@ class JobServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private RenderIotGatewayClient renderGatewayClient;
+
     @InjectMocks
     private JobServiceImpl jobService;
 

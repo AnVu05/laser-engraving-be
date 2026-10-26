@@ -181,4 +181,36 @@ class JobControllerTest {
 
         verify(jobService).cancelJob("JOB-20261020-A1B2C3D4");
     }
+
+    @Test
+    @DisplayName("API GET /api/v1/jobs/{jobCode}/telemetry lấy dữ liệu telemetry từ Render Gateway")
+    void testGetJobTelemetry_Success() throws Exception {
+        when(jobService.getJobTelemetryFromGateway("JOB-20261020-A1B2C3D4")).thenReturn(java.util.Map.of(
+                "jobCode", "JOB-20261020-A1B2C3D4",
+                "progressPercent", 75.0,
+                "x", 50.5,
+                "y", 25.0
+        ));
+
+        mockMvc.perform(get("/api/v1/jobs/JOB-20261020-A1B2C3D4/telemetry"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.progressPercent").value(75.0))
+                .andExpect(jsonPath("$.data.x").value(50.5));
+    }
+
+    @Test
+    @DisplayName("API POST /api/v1/jobs/{jobCode}/command gửi lệnh điều khiển máy")
+    void testSendJobCommand_Success() throws Exception {
+        when(jobService.getJobByCode("JOB-20261020-A1B2C3D4")).thenReturn(sampleResponse);
+        when(jobService.sendDeviceCommand(eq("LASER-HN-001"), eq("PAUSE"), eq("JOB-20261020-A1B2C3D4"), any()))
+                .thenReturn(true);
+
+        mockMvc.perform(post("/api/v1/jobs/JOB-20261020-A1B2C3D4/command")
+                        .param("action", "PAUSE")
+                        .param("reason", "Khói bụi"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("PAUSE")));
+    }
 }

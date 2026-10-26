@@ -30,6 +30,9 @@ class DeviceServiceTest {
     @Mock
     private SimpMessagingTemplate messagingTemplate;
 
+    @Mock
+    private RenderIotGatewayClient renderGatewayClient;
+
     @InjectMocks
     private DeviceServiceImpl deviceService;
 

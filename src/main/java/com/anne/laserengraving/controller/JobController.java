@@ -151,4 +151,27 @@ public class JobController {
         jobService.confirmJob(jobCode);
         return ResponseEntity.ok(ApiResponse.ok(null, "Xác nhận an toàn Job thành công"));
     }
+
+    @GetMapping("/{jobCode}/telemetry")
+    @Operation(summary = "Lấy telemetry thời gian thực của Job từ Render IoT Gateway (tiến độ, toạ độ X/Y, cảm biến)")
+    public ResponseEntity<ApiResponse<java.util.Map<String, Object>>> getJobTelemetry(@PathVariable("jobCode") String jobCode) {
+        java.util.Map<String, Object> telemetry = jobService.getJobTelemetryFromGateway(jobCode);
+        return ResponseEntity.ok(ApiResponse.ok(telemetry, "Lấy telemetry thành công"));
+    }
+
+    @PostMapping("/{jobCode}/command")
+    @Operation(summary = "Gửi lệnh điều khiển tức thời (PAUSE, RESUME, CANCEL, HOME) xuống máy qua Render Gateway")
+    public ResponseEntity<ApiResponse<Void>> sendJobCommand(
+            @PathVariable("jobCode") String jobCode,
+            @RequestParam("action") String action,
+            @RequestParam(value = "reason", required = false) String reason) {
+        JobDispatchResponse job = jobService.getJobByCode(jobCode);
+        String deviceCode = job.getDeviceCode() != null ? job.getDeviceCode() : "LASER-HN-001";
+        boolean sent = jobService.sendDeviceCommand(deviceCode, action, jobCode, reason);
+        if (sent) {
+            return ResponseEntity.ok(ApiResponse.ok(null, "Đã gửi lệnh " + action + " xuống thiết bị thành công"));
+        } else {
+            return ResponseEntity.ok(ApiResponse.ok(null, "Lệnh " + action + " đã được ghi nhận cục bộ"));
+        }
+    }
 }

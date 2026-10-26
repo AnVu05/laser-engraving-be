@@ -24,6 +24,7 @@ public class DeviceServiceImpl implements DeviceService {
 
     private final DeviceRepository deviceRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final RenderIotGatewayClient renderGatewayClient;
 
     @Override
     @Transactional(readOnly = true)
@@ -52,10 +53,25 @@ public class DeviceServiceImpl implements DeviceService {
         device.setMaxHeightMm(request.getMaxHeightMm());
         device.setMaxSpeedMmMin(request.getMaxSpeedMmMin());
         device.setMaxPowerS(request.getMaxPowerS());
-        device.setConfigVersion(device.getConfigVersion() == null ? 1L : device.getConfigVersion() + 1L);
+        long newVersion = device.getConfigVersion() == null ? 1L : device.getConfigVersion() + 1L;
+        device.setConfigVersion(newVersion);
         deviceRepository.save(device);
 
         messagingTemplate.convertAndSend("/topic/device/" + deviceCode + "/config", mapToResponse(device));
+
+        // Đồng bộ cấu hình sang Render IoT Gateway
+        try {
+            renderGatewayClient.syncDeviceConfig(deviceCode, java.util.Map.of(
+                    "maxWidthMm", device.getMaxWidthMm(),
+                    "maxHeightMm", device.getMaxHeightMm(),
+                    "maxSpeedMmMin", device.getMaxSpeedMmMin(),
+                    "maxPowerS", device.getMaxPowerS(),
+                    "configVersion", newVersion
+            ));
+        } catch (Exception e) {
+            log.warn("[DEVICE CONFIG] Bỏ qua lỗi đồng bộ cấu hình sang Render Gateway: {}", e.getMessage());
+        }
+
         return mapToResponse(device);
     }
 
