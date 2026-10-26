@@ -151,11 +151,34 @@ public class DeviceServiceImpl implements DeviceService {
     }
 
     private DeviceResponse mapToResponse(DeviceEntity entity) {
+        String status = entity.getConnectionStatus();
+        LocalDateTime lastHeartbeat = entity.getLastHeartbeat();
+        Integer wifiRssi = null;
+        Long freeHeap = null;
+
+        // Đồng bộ trạng thái thực tế thời gian thực từ Render Cloud Gateway
+        try {
+            var gatewayStatusOpt = renderGatewayClient.getDeviceStatus(entity.getDeviceCode());
+            if (gatewayStatusOpt.isPresent()) {
+                var data = gatewayStatusOpt.get();
+                if ("ONLINE".equalsIgnoreCase((String) data.get("status")) || Boolean.TRUE.equals(data.get("isActive"))) {
+                    status = "ONLINE";
+                    lastHeartbeat = LocalDateTime.now();
+                }
+                if (data.get("lastHeartbeat") instanceof java.util.Map hb) {
+                    if (hb.get("wifiRssi") instanceof Number num) wifiRssi = num.intValue();
+                    if (hb.get("freeHeap") instanceof Number num) freeHeap = num.longValue();
+                }
+            }
+        } catch (Exception e) {
+            log.debug("[DEVICE STATUS] Không thể lấy trạng thái từ Render Gateway: {}", e.getMessage());
+        }
+
         return DeviceResponse.builder()
                 .id(entity.getId())
                 .deviceCode(entity.getDeviceCode())
                 .deviceName(entity.getDeviceName())
-                .connectionStatus(entity.getConnectionStatus())
+                .connectionStatus(status)
                 .ipAddress(entity.getIpAddress())
                 .firmwareVersion(entity.getFirmwareVersion())
                 .maxWidthMm(entity.getMaxWidthMm())
@@ -164,8 +187,10 @@ public class DeviceServiceImpl implements DeviceService {
                 .maxPowerS(entity.getMaxPowerS())
                 .configVersion(entity.getConfigVersion())
                 .configAppliedVersion(entity.getConfigAppliedVersion())
-                .lastHeartbeat(entity.getLastHeartbeat())
+                .lastHeartbeat(lastHeartbeat)
                 .isActive(entity.getIsActive())
+                .wifiRssi(wifiRssi)
+                .freeHeap(freeHeap)
                 .build();
     }
 }

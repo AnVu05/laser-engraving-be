@@ -26,4 +26,6 @@ public class DeviceResponse {
     private Long configAppliedVersion;
     private LocalDateTime lastHeartbeat;
     private Boolean isActive;
+    private Integer wifiRssi;
+    private Long freeHeap;
 }
