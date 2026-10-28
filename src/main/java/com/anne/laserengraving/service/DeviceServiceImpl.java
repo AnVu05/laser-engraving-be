@@ -132,46 +132,86 @@ public class DeviceServiceImpl implements DeviceService {
 
     @Override
     @Transactional
-    @Scheduled(fixedRate = 15000) // Quét mỗi 15 giây
+    @Scheduled(fixedRate = 4000) // Quét đồng bộ định kỳ mỗi 4 giây
     public void checkDeviceTimeouts() {
-        LocalDateTime threshold = LocalDateTime.now().minusSeconds(45); // Quá 45s không heartbeat
         List<DeviceEntity> devices = deviceRepository.findByIsActiveTrue();
 
         for (DeviceEntity device : devices) {
-            if ("ONLINE".equalsIgnoreCase(device.getConnectionStatus()) || "BUSY".equalsIgnoreCase(device.getConnectionStatus())) {
-                if (device.getLastHeartbeat() == null || device.getLastHeartbeat().isBefore(threshold)) {
-                    device.setConnectionStatus("OFFLINE");
-                    device.setUpdatedAt(LocalDateTime.now());
-                    deviceRepository.save(device);
-                    log.warn("Thiết bị {} mất kết nối quá 45 giây -> Chuyển trạng thái sang OFFLINE!", device.getDeviceCode());
-                    messagingTemplate.convertAndSend("/topic/devices/status", mapToResponse(device));
+            String oldStatus = device.getConnectionStatus();
+            String targetStatus = oldStatus;
+
+            // 1. Kiểm tra trạng thái thực tế từ Render IoT Gateway nếu được bật
+            boolean checkedGateway = false;
+            if (renderGatewayClient.isEnabled()) {
+                try {
+                    var gatewayStatusOpt = renderGatewayClient.getDeviceStatus(device.getDeviceCode());
+                    if (gatewayStatusOpt.isPresent()) {
+                        checkedGateway = true;
+                        var data = gatewayStatusOpt.get();
+                        String gwStatus = (String) data.get("status");
+                        boolean gwActive = Boolean.TRUE.equals(data.get("isActive"));
+
+                        if ("ONLINE".equalsIgnoreCase(gwStatus) || gwActive) {
+                            targetStatus = "BUSY".equalsIgnoreCase(oldStatus) ? "BUSY" : "ONLINE";
+                        } else {
+                            targetStatus = "OFFLINE";
+                        }
+                    }
+                } catch (Exception e) {
+                    log.debug("[DEVICE TIMEOUT] Lỗi truy vấn Render Gateway cho máy {}: {}", device.getDeviceCode(), e.getMessage());
                 }
+            }
+
+            // 2. Fallback kiểm tra nhịp tim cục bộ nếu không dùng Render Gateway
+            if (!checkedGateway) {
+                LocalDateTime threshold = LocalDateTime.now().minusSeconds(45);
+                if ("ONLINE".equalsIgnoreCase(oldStatus) || "BUSY".equalsIgnoreCase(oldStatus)) {
+                    if (device.getLastHeartbeat() == null || device.getLastHeartbeat().isBefore(threshold)) {
+                        targetStatus = "OFFLINE";
+                    }
+                }
+            }
+
+            if (!targetStatus.equalsIgnoreCase(oldStatus)) {
+                device.setConnectionStatus(targetStatus);
+                device.setUpdatedAt(LocalDateTime.now());
+                deviceRepository.save(device);
+                log.info("[DEVICE MONITOR] Thiết bị {} cập nhật trạng thái: {} -> {}", device.getDeviceCode(), oldStatus, targetStatus);
+                messagingTemplate.convertAndSend("/topic/devices/status", mapToResponse(device));
             }
         }
     }
 
     private DeviceResponse mapToResponse(DeviceEntity entity) {
-        String status = entity.getConnectionStatus();
+        String status = entity.getConnectionStatus() != null ? entity.getConnectionStatus() : "OFFLINE";
         LocalDateTime lastHeartbeat = entity.getLastHeartbeat();
         Integer wifiRssi = null;
         Long freeHeap = null;
 
         // Đồng bộ trạng thái thực tế thời gian thực từ Render Cloud Gateway
-        try {
-            var gatewayStatusOpt = renderGatewayClient.getDeviceStatus(entity.getDeviceCode());
-            if (gatewayStatusOpt.isPresent()) {
-                var data = gatewayStatusOpt.get();
-                if ("ONLINE".equalsIgnoreCase((String) data.get("status")) || Boolean.TRUE.equals(data.get("isActive"))) {
-                    status = "ONLINE";
-                    lastHeartbeat = LocalDateTime.now();
+        if (renderGatewayClient.isEnabled()) {
+            try {
+                var gatewayStatusOpt = renderGatewayClient.getDeviceStatus(entity.getDeviceCode());
+                if (gatewayStatusOpt.isPresent()) {
+                    var data = gatewayStatusOpt.get();
+                    String gwStatus = (String) data.get("status");
+                    boolean gwActive = Boolean.TRUE.equals(data.get("isActive"));
+
+                    if ("ONLINE".equalsIgnoreCase(gwStatus) || gwActive) {
+                        status = "BUSY".equalsIgnoreCase(entity.getConnectionStatus()) ? "BUSY" : "ONLINE";
+                        lastHeartbeat = LocalDateTime.now();
+                    } else {
+                        status = "OFFLINE";
+                    }
+
+                    if (data.get("lastHeartbeat") instanceof java.util.Map hb) {
+                        if (hb.get("wifiRssi") instanceof Number num) wifiRssi = num.intValue();
+                        if (hb.get("freeHeap") instanceof Number num) freeHeap = num.longValue();
+                    }
                 }
-                if (data.get("lastHeartbeat") instanceof java.util.Map hb) {
-                    if (hb.get("wifiRssi") instanceof Number num) wifiRssi = num.intValue();
-                    if (hb.get("freeHeap") instanceof Number num) freeHeap = num.longValue();
-                }
+            } catch (Exception e) {
+                log.debug("[DEVICE STATUS] Không thể lấy trạng thái từ Render Gateway: {}", e.getMessage());
             }
-        } catch (Exception e) {
-            log.debug("[DEVICE STATUS] Không thể lấy trạng thái từ Render Gateway: {}", e.getMessage());
         }
 
         return DeviceResponse.builder()

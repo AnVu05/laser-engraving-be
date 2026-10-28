@@ -27,14 +27,17 @@ public class DataInitializer implements ApplicationRunner {
 
     private final MaterialPresetService materialPresetService;
     private final DeviceRepository deviceRepository;
+    private final com.anne.laserengraving.repository.UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
     public DataInitializer(
             MaterialPresetService materialPresetService,
             DeviceRepository deviceRepository,
+            com.anne.laserengraving.repository.UserRepository userRepository,
             PasswordEncoder passwordEncoder) {
         this.materialPresetService = materialPresetService;
         this.deviceRepository = deviceRepository;
+        this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -42,17 +45,40 @@ public class DataInitializer implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         log.info("========== [DATA INITIALIZER] Bắt đầu kiểm tra và khởi tạo dữ liệu chuẩn hệ thống ==========");
 
-        // Khởi tạo 6 vật liệu mẫu chuẩn hệ thống (nếu chưa có trong CSDL)
+        // 1. Khởi tạo tài khoản Quản trị viên mặc định (nếu chưa có)
+        initDefaultAdminUser();
+
+        // 2. Khởi tạo 6 vật liệu mẫu chuẩn hệ thống (nếu chưa có trong CSDL)
         try {
             materialPresetService.initDefaultPresets();
         } catch (Exception ex) {
             log.warn("[DATA INITIALIZER] Lỗi khi nạp vật liệu chuẩn hệ thống: {}", ex.getMessage());
         }
 
-        // Khởi tạo máy khắc Laser mẫu LASER-HN-001 (Makerbase MKS DLC32 V2.1)
+        // 3. Khởi tạo máy khắc Laser mẫu LASER-HN-001 (Makerbase MKS DLC32 V2.1)
         initDefaultDevice();
 
         log.info("========== [DATA INITIALIZER] Hoàn tất nạp dữ liệu chuẩn hệ thống ==========");
+    }
+
+    private void initDefaultAdminUser() {
+        try {
+            if (!userRepository.existsByEmail("admin@gmail.com")) {
+                com.anne.laserengraving.entity.UserEntity adminUser = com.anne.laserengraving.entity.UserEntity.builder()
+                        .username("admin")
+                        .email("admin@gmail.com")
+                        .fullName("Quản trị viên Laser Studio")
+                        .passwordHash(passwordEncoder.encode("admin123"))
+                        .role("ADMIN")
+                        .authProvider("LOCAL")
+                        .createdAt(java.time.LocalDateTime.now())
+                        .build();
+                userRepository.save(adminUser);
+                log.info("[DATA INITIALIZER] Đã khởi tạo tài khoản quản trị viên mặc định: admin@gmail.com / admin123");
+            }
+        } catch (Exception ex) {
+            log.warn("[DATA INITIALIZER] Lỗi khi khởi tạo tài khoản quản trị viên: {}", ex.getMessage());
+        }
     }
 
     private void initDefaultDevice() {

@@ -17,4 +17,6 @@ public interface EngravingJobRepository extends JpaRepository<EngravingJobEntity
     List<EngravingJobEntity> findByUser_UserIdOrderByDispatchedAtDesc(Integer userId);
 
     List<EngravingJobEntity> findByStatus(String status);
+
+    List<EngravingJobEntity> findByStatusIn(List<String> statuses);
 }

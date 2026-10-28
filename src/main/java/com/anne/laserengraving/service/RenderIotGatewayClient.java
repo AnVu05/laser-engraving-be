@@ -36,6 +36,33 @@ public class RenderIotGatewayClient {
         log.info("[RENDER GATEWAY CLIENT] Khởi tạo Client: url={}, enabled={}", this.gatewayUrl, this.enabled);
     }
 
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    /**
+     * Lấy thông tin chi tiết một Job từ Render Gateway (trạng thái, tiến độ thực tế từ bo mạch)
+     */
+    public Optional<Map<String, Object>> getJobDetail(String jobCode) {
+        if (!enabled) return Optional.empty();
+
+        String url = gatewayUrl + "/api/v1/internal/jobs/" + jobCode;
+        HttpHeaders headers = createAuthHeaders();
+
+        try {
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, entity, Map.class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return Optional.ofNullable((Map<String, Object>) response.getBody().get("data"));
+            }
+        } catch (RestClientException e) {
+            log.debug("[RENDER GATEWAY] Lỗi lấy thông tin Job {} từ Render: {}", jobCode, e.getMessage());
+        }
+
+        return Optional.empty();
+    }
+
     /**
      * Đẩy Job và nội dung G-code sang Render IoT Gateway
      */

@@ -121,11 +121,9 @@ public class AuthController {
     @GetMapping("/me")
     @Operation(
             summary = "Lấy thông tin tài khoản hiện tại",
-            description = "Truy xuất thông tin người dùng từ HttpOnly Cookie hoặc tham số email."
+            description = "Truy xuất thông tin người dùng từ HttpOnly Cookie hoặc Bearer Header đã xác thực."
     )
     public ResponseEntity<ApiResponse<UserResponse>> getCurrentUser(
-            @Parameter(description = "Địa chỉ Gmail cần truy xuất (tuỳ chọn nếu trình duyệt đã gửi HttpOnly cookie)", example = "operator.laser@gmail.com")
-            @RequestParam(required = false) String email,
             @CookieValue(name = CookieUtil.AUTH_COOKIE_NAME, required = false) String cookieToken,
             @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
 
@@ -137,10 +135,6 @@ public class AuthController {
             if (jwtUtil.validateToken(bearerToken)) {
                 targetEmail = jwtUtil.extractEmail(bearerToken);
             }
-        }
-
-        if (targetEmail == null || targetEmail.isBlank()) {
-            targetEmail = email;
         }
 
         if (targetEmail == null || targetEmail.isBlank()) {

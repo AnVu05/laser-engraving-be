@@ -17,6 +17,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import com.anne.laserengraving.dto.websocket.JobProgressMessage;
+import com.anne.laserengraving.dto.websocket.JobStatusUpdateMessage;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -187,7 +190,7 @@ public class JobServiceImpl implements JobService {
             renderGatewayClient.dispatchJobToGateway(
                     job.getJobCode(),
                     device.getDeviceCode(),
-                    job.getOriginalFilename(),
+                    job.getJobCode() + ".gcode",
                     gcodeContent,
                     job.getTargetWidthMm(),
                     job.getTargetHeightMm(),
@@ -312,7 +315,112 @@ public class JobServiceImpl implements JobService {
         messagingTemplate.convertAndSend("/topic/jobs/" + jobCode + "/status", statusMsg);
         messagingTemplate.convertAndSend("/topic/client/status", statusMsg);
 
+        // Chuyển tiếp lệnh CONFIRM xuống bo mạch qua Render Gateway
+        try {
+            renderGatewayClient.sendDeviceCommand(deviceCode, "CONFIRM", jobCode, "Confirmed by Admin from Web Studio");
+            log.info("[CONFIRM] Đã gửi lệnh CONFIRM xuống thiết bị {} qua Render Gateway", deviceCode);
+        } catch (Exception e) {
+            log.warn("[CONFIRM] Không thể gửi lệnh CONFIRM sang Render Gateway: {}", e.getMessage());
+        }
+
         log.info("[CONFIRM] Quản máy đã phê duyệt an toàn Job: {} trên thiết bị: {}", jobCode, deviceCode);
+    }
+
+    private static final List<String> ACTIVE_STATUSES = List.of(
+            "DISPATCHED", "DOWNLOADING", "VALIDATING", "AWAITING_ONSITE_CONFIRMATION", "PRINTING"
+    );
+
+    /**
+     * Tự động đồng bộ trạng thái thực tế và tiến độ của các Job đang chạy từ Render IoT Gateway
+     */
+    @Scheduled(fixedRate = 2000)
+    @Transactional
+    public void syncActiveJobsFromGateway() {
+        if (!renderGatewayClient.isEnabled()) return;
+
+        List<EngravingJobEntity> activeJobs = jobRepository.findByStatusIn(ACTIVE_STATUSES);
+        if (activeJobs.isEmpty()) return;
+
+        for (EngravingJobEntity job : activeJobs) {
+            try {
+                var jobDataOpt = renderGatewayClient.getJobDetail(job.getJobCode());
+                if (jobDataOpt.isPresent()) {
+                    var data = jobDataOpt.get();
+                    String gatewayStatus = (String) data.get("status");
+                    Double progress = null;
+                    if (data.get("currentProgress") instanceof Number num) {
+                        progress = num.doubleValue();
+                    }
+
+                    boolean changed = false;
+                    if (gatewayStatus != null && !gatewayStatus.equalsIgnoreCase(job.getStatus())) {
+                        String oldStatus = job.getStatus();
+                        job.setStatus(gatewayStatus.toUpperCase());
+                        changed = true;
+
+                        if ("COMPLETED".equalsIgnoreCase(gatewayStatus)) {
+                            job.setCurrentProgress(100.0);
+                            if (job.getCompletedAt() == null) job.setCompletedAt(LocalDateTime.now());
+                            if (job.getDevice() != null) {
+                                job.getDevice().setConnectionStatus("ONLINE");
+                                deviceRepository.save(job.getDevice());
+                            }
+                        } else if ("PRINTING".equalsIgnoreCase(gatewayStatus)) {
+                            if (job.getStartedAt() == null) job.setStartedAt(LocalDateTime.now());
+                            if (job.getDevice() != null) {
+                                job.getDevice().setConnectionStatus("BUSY");
+                                deviceRepository.save(job.getDevice());
+                            }
+                        } else if ("FAILED".equalsIgnoreCase(gatewayStatus) || "CANCELLED".equalsIgnoreCase(gatewayStatus)) {
+                            if (job.getDevice() != null) {
+                                job.getDevice().setConnectionStatus("ONLINE");
+                                deviceRepository.save(job.getDevice());
+                            }
+                        }
+
+                        log.info("[GATEWAY SYNC] Job {}: trạng thái thay đổi {} -> {}", job.getJobCode(), oldStatus, job.getStatus());
+                    }
+
+                    if (progress != null && (job.getCurrentProgress() == null || Math.abs(job.getCurrentProgress() - progress) > 0.05)) {
+                        job.setCurrentProgress(progress);
+                        changed = true;
+                    }
+
+                    if (changed) {
+                        jobRepository.save(job);
+
+                        String devCode = job.getDevice() != null ? job.getDevice().getDeviceCode() : "LASER-HN-001";
+                        JobStatusUpdateMessage updateMsg = JobStatusUpdateMessage.builder()
+                                .type("JOB_STATUS_CHANGE")
+                                .deviceCode(devCode)
+                                .jobCode(job.getJobCode())
+                                .status(job.getStatus())
+                                .message("Đồng bộ từ Cloud IoT Gateway")
+                                .timestamp(System.currentTimeMillis())
+                                .build();
+
+                        messagingTemplate.convertAndSend("/topic/jobs/" + job.getJobCode() + "/status", updateMsg);
+                        messagingTemplate.convertAndSend("/topic/client/status", updateMsg);
+
+                        if (progress != null) {
+                            JobProgressMessage progMsg = JobProgressMessage.builder()
+                                    .type("PROGRESS_UPDATE")
+                                    .deviceCode(devCode)
+                                    .jobCode(job.getJobCode())
+                                    .status(job.getStatus())
+                                    .progressPercent(progress)
+                                    .totalLines(job.getTotalLines())
+                                    .timestamp(System.currentTimeMillis())
+                                    .build();
+                            messagingTemplate.convertAndSend("/topic/jobs/" + job.getJobCode() + "/progress", progMsg);
+                            messagingTemplate.convertAndSend("/topic/client/progress", progMsg);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("[GATEWAY SYNC] Bỏ qua lỗi đồng bộ Job {}: {}", job.getJobCode(), e.getMessage());
+            }
+        }
     }
 
     private void authenticateDeviceAccess(DeviceEntity device, String authHeader, String deviceCodeHeader) {

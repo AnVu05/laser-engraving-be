@@ -21,6 +21,9 @@ import org.springframework.beans.factory.annotation.Value;
 import java.util.Arrays;
 import java.util.List;
 
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.MediaType;
+
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
@@ -44,13 +47,59 @@ public class SecurityConfig {
         http
                 .cors(Customizer.withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding("UTF-8");
+                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            response.getWriter().write("{\"success\":false,\"message\":\"Yêu cầu đăng nhập tài khoản Quản trị viên (ADMIN) để thực hiện thao tác này!\",\"data\":null}");
+                        })
+                        .accessDeniedHandler((request, response, accessDeniedException) -> {
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding("UTF-8");
+                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            response.getWriter().write("{\"success\":false,\"message\":\"Bạn không có quyền quản trị (ADMIN/OPERATOR) để truy cập tài nguyên này!\",\"data\":null}");
+                        })
+                )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.PUT, "/api/v1/devices/*/config").hasAnyRole("OPERATOR", "ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/api/v1/devices/*/token").hasAnyRole("OPERATOR", "ADMIN")
-                        .requestMatchers("/api/v1/jobs/**").hasAnyRole("OPERATOR", "ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/api/v1/settings").hasAnyRole("OPERATOR", "ADMIN")
-                        .requestMatchers("/api/v1/**", "/ws/device/**", "/ws/client/**", "/h2-console/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/error").permitAll()
-                        .anyRequest().permitAll()
+                        // 1. Endpoints cho bo mạch phần cứng MKS DLC32 (Xác thực nội bộ qua Bearer token phần cứng & X-Device-Code)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/jobs/*/download").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/jobs/code/*/download").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/devices/heartbeat").permitAll()
+
+                        // 2. Endpoints Quản trị & Điều hành Máy Laser (BẮT BUỘC ROLE ADMIN HOẶC OPERATOR)
+                        .requestMatchers(HttpMethod.POST, "/api/v1/jobs/*/confirm").hasAnyRole("ADMIN", "OPERATOR")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/jobs/*/cancel").hasAnyRole("ADMIN", "OPERATOR")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/jobs/*/command").hasAnyRole("ADMIN", "OPERATOR")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/jobs/*/telemetry").hasAnyRole("ADMIN", "OPERATOR")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/jobs").hasAnyRole("ADMIN", "OPERATOR")
+
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/devices/*/config").hasAnyRole("ADMIN", "OPERATOR")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/devices/*/token").hasAnyRole("ADMIN", "OPERATOR")
+
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/settings").hasAnyRole("ADMIN", "OPERATOR")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/materials/init-defaults").hasAnyRole("ADMIN", "OPERATOR")
+
+                        // 3. Endpoints Công khai, Xác thực & Studio Designer
+                        .requestMatchers(HttpMethod.GET, "/api/v1/devices/**").permitAll()
+                        .requestMatchers("/api/v1/auth/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/jobs/dispatch").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/jobs/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/jobs/code/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/materials/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/materials").permitAll()
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/materials/*").permitAll()
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/materials/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/settings").permitAll()
+                        .requestMatchers("/api/v1/gcode/**").permitAll()
+                        .requestMatchers("/api/v1/history/**").permitAll()
+                        .requestMatchers("/api/v1/projects/**").permitAll()
+
+                        // 4. WebSocket, Swagger Docs & H2 Console
+                        .requestMatchers("/ws/**", "/ws/device/**", "/ws/client/**").permitAll()
+                        .requestMatchers("/h2-console/**", "/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/error").permitAll()
+
+                        .anyRequest().authenticated()
                 )
                 .headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::disable))
                 .addFilterBefore(cookieJwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
