@@ -72,6 +72,19 @@ public class FileStorageServiceImpl implements FileStorageService {
     }
 
     @Override
+    public String loadGcodeFileAsString(String relativePath) {
+        try {
+            Path filePath = this.storageLocation.resolve(relativePath).normalize();
+            if (!filePath.startsWith(this.storageLocation)) {
+                throw new FileStorageException("Đường dẫn file không hợp lệ (Path Traversal detected)");
+            }
+            return Files.readString(filePath, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new FileStorageException("Không thể đọc tệp G-code: " + relativePath, e);
+        }
+    }
+
+    @Override
     public void deleteGcodeFile(String relativePath) {
         if (relativePath == null || relativePath.isBlank()) {
             return;

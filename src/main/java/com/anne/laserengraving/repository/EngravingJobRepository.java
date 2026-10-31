@@ -12,6 +12,8 @@ public interface EngravingJobRepository extends JpaRepository<EngravingJobEntity
 
     Optional<EngravingJobEntity> findByJobCode(String jobCode);
 
+    List<EngravingJobEntity> findAllByOrderByIdDesc();
+
     List<EngravingJobEntity> findByDeviceIdOrderByDispatchedAtDesc(Integer deviceId);
 
     List<EngravingJobEntity> findByUser_UserIdOrderByDispatchedAtDesc(Integer userId);
@@ -19,4 +21,12 @@ public interface EngravingJobRepository extends JpaRepository<EngravingJobEntity
     List<EngravingJobEntity> findByStatus(String status);
 
     List<EngravingJobEntity> findByStatusIn(List<String> statuses);
+
+    boolean existsByDeviceIdAndStatusIn(Integer deviceId, List<String> statuses);
+
+    long countByDeviceIdAndStatus(Integer deviceId, String status);
+
+    List<EngravingJobEntity> findByDeviceIdAndStatusOrderByDispatchedAtAsc(Integer deviceId, String status);
+
+    List<EngravingJobEntity> findByStatusOrderByDispatchedAtAsc(String status);
 }

@@ -1,6 +1,7 @@
 package com.anne.laserengraving.service;
 
 import com.anne.laserengraving.core.gcode.GcodeSafetyValidator;
+import com.anne.laserengraving.dto.device.DeviceResponse;
 import com.anne.laserengraving.dto.request.JobDispatchRequest;
 import com.anne.laserengraving.dto.response.JobDispatchResponse;
 import com.anne.laserengraving.dto.websocket.JobNotificationMessage;
@@ -98,6 +99,37 @@ public class JobServiceImpl implements JobService {
             throw new InvalidParameterException("Thiết bị " + request.getDeviceCode() + " hiện đang bị vô hiệu hóa.");
         }
 
+        // Kiểm tra tính sẵn sàng thực tế của thiết bị: từ chối nếu thiết bị đang OFFLINE
+        boolean isDeviceOnline = !"OFFLINE".equalsIgnoreCase(device.getConnectionStatus());
+        if (renderGatewayClient.isEnabled()) {
+            try {
+                var gwStatusOpt = renderGatewayClient.getDeviceStatus(device.getDeviceCode());
+                if (gwStatusOpt.isPresent()) {
+                    var data = gwStatusOpt.get();
+                    String gwStatus = (String) data.get("status");
+                    boolean gwActive = Boolean.TRUE.equals(data.get("isActive"));
+                    boolean hasHeartbeat = false;
+                    if (data.get("lastHeartbeat") instanceof java.util.Map hb && !hb.isEmpty()) {
+                        hasHeartbeat = hb.containsKey("timestamp") || hb.containsKey("freeHeap");
+                    }
+
+                    if ("OFFLINE".equalsIgnoreCase(gwStatus) || !gwActive || !hasHeartbeat) {
+                        isDeviceOnline = false;
+                        device.setConnectionStatus("OFFLINE");
+                        device.setUpdatedAt(LocalDateTime.now());
+                        deviceRepository.save(device);
+                        messagingTemplate.convertAndSend("/topic/devices/status", mapToDeviceResponse(device));
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("[DISPATCH PRE-CHECK] Lỗi kiểm tra Render Gateway: {}", e.getMessage());
+            }
+        }
+
+        if (!isDeviceOnline) {
+            throw new InvalidParameterException("Không thể gửi Job: Thiết bị " + request.getDeviceCode() + " hiện đang Ngoại tuyến (OFFLINE). Vui lòng cắm nguồn máy và đợi bo mạch kết nối Wi-Fi trước khi gửi Job!");
+        }
+
         // 2. Tính toán mã băm SHA-256 bảo mật
         String sha256Checksum = CryptoUtil.calculateSha256(fileBytes);
         String gcodeContent = new String(fileBytes, StandardCharsets.UTF_8);
@@ -138,6 +170,17 @@ public class JobServiceImpl implements JobService {
             user = userRepository.findById(request.getUserId()).orElse(null);
         }
 
+        // Kiểm tra xem máy có đang bận thực thi job nào không (hoặc đã có job khác trong hàng đợi)
+        boolean hasActiveJob = jobRepository.existsByDeviceIdAndStatusIn(
+                device.getId(),
+                List.of("DISPATCHED", "DOWNLOADING", "VALIDATING", "AWAITING_ONSITE_CONFIRMATION", "PRINTING")
+        );
+        boolean isDeviceBusy = "BUSY".equalsIgnoreCase(device.getConnectionStatus()) || hasActiveJob;
+        long queuedCount = jobRepository.countByDeviceIdAndStatus(device.getId(), "QUEUED");
+
+        boolean shouldQueue = isDeviceBusy || queuedCount > 0;
+        String initialStatus = shouldQueue ? "QUEUED" : "DISPATCHED";
+
         // 6. Lưu bản ghi vào bảng Engraving_Jobs
         EngravingJobEntity job = EngravingJobEntity.builder()
                 .jobCode(jobCode)
@@ -153,18 +196,61 @@ public class JobServiceImpl implements JobService {
                 .feedRate(speed)
                 .laserPower(power)
                 .totalLines(totalLines)
-                .status("DISPATCHED")
+                .status(initialStatus)
                 .currentProgress(0.0)
                 .materialType(request.getMaterialType() != null ? request.getMaterialType() : "Gỗ Plywood")
                 .dispatchedAt(LocalDateTime.now())
                 .build();
 
         job = jobRepository.save(job);
+        String downloadUrl = "/api/v1/jobs/" + job.getId() + "/download";
+
+        if (shouldQueue) {
+            int queuePosition = (int) queuedCount + 1;
+            log.info("[QUEUE] Thiết bị {} đang bận (hoặc hàng đợi có {} job). Job {} đã vào HÀNG ĐỢI GIA CÔNG ở vị trí #{}",
+                    device.getDeviceCode(), queuedCount, job.getJobCode(), queuePosition);
+
+            // Bắn thông báo đẩy WebSocket tới Web Client Studio: /topic/client/jobs và /topic/client/status
+            JobNotificationMessage notification = JobNotificationMessage.builder()
+                    .event("JOB_QUEUED")
+                    .jobId(job.getId())
+                    .jobCode(job.getJobCode())
+                    .fileName(job.getOriginalFilename())
+                    .fileSizeBytes(job.getFileSizeBytes())
+                    .sha256Checksum(sha256Checksum)
+                    .downloadUrl(downloadUrl)
+                    .targetWidthMm(job.getTargetWidthMm())
+                    .targetHeightMm(job.getTargetHeightMm())
+                    .feedRate(job.getFeedRate())
+                    .laserPower(job.getLaserPower())
+                    .build();
+            messagingTemplate.convertAndSend("/topic/client/jobs", notification);
+
+            JobStatusUpdateMessage statusMsg = JobStatusUpdateMessage.builder()
+                    .type("JOB_STATUS_CHANGE")
+                    .deviceCode(device.getDeviceCode())
+                    .jobCode(job.getJobCode())
+                    .status("QUEUED")
+                    .message("Đã xếp vào hàng đợi gia công (Vị trí #" + queuePosition + "). Chờ Admin phê duyệt khi máy sẵn sàng.")
+                    .timestamp(System.currentTimeMillis())
+                    .build();
+            messagingTemplate.convertAndSend("/topic/jobs/" + job.getJobCode() + "/status", statusMsg);
+            messagingTemplate.convertAndSend("/topic/client/status", statusMsg);
+
+            JobDispatchResponse resp = mapToResponse(job, downloadUrl);
+            resp.setQueuePosition(queuePosition);
+            resp.setMessage("Máy " + device.getDeviceCode() + " hiện đang bận. Yêu cầu khắc đã được lưu an toàn vào Hàng đợi (Vị trí #" + queuePosition + "). Admin sẽ kiểm tra và phê duyệt khi máy sẵn sàng!");
+            return resp;
+        }
+
+        // Nếu máy đang rảnh và hàng đợi rỗng: Điều phối trực tiếp xuống bo mạch
+        device.setConnectionStatus("BUSY");
+        deviceRepository.save(device);
+
         log.info("[DISPATCH] Đã tạo Job {}: Thiết bị {}, File: {}, Size: {} bytes, SHA-256: {}",
                 job.getJobCode(), device.getDeviceCode(), job.getOriginalFilename(), job.getFileSizeBytes(), sha256Checksum);
 
         // 7. Bắn thông báo đẩy WebSocket tức thời tới bo mạch và Web Client
-        String downloadUrl = "/api/v1/jobs/" + job.getId() + "/download";
         JobNotificationMessage notification = JobNotificationMessage.builder()
                 .event("NEW_JOB_AVAILABLE")
                 .jobId(job.getId())
@@ -202,7 +288,9 @@ public class JobServiceImpl implements JobService {
             log.warn("[DISPATCH] Bỏ qua lỗi chuyển tiếp sang Render Gateway: {}", e.getMessage());
         }
 
-        return mapToResponse(job, downloadUrl);
+        JobDispatchResponse resp = mapToResponse(job, downloadUrl);
+        resp.setMessage("Đã điều phối trực tiếp Job tới bo mạch " + device.getDeviceCode());
+        return resp;
     }
 
     @Override
@@ -246,7 +334,7 @@ public class JobServiceImpl implements JobService {
     @Override
     @Transactional(readOnly = true)
     public List<JobDispatchResponse> getAllJobs() {
-        return jobRepository.findAll().stream()
+        return jobRepository.findAllByOrderByIdDesc().stream()
                 .map(j -> mapToResponse(j, "/api/v1/jobs/" + j.getId() + "/download"))
                 .collect(Collectors.toList());
     }
@@ -267,19 +355,28 @@ public class JobServiceImpl implements JobService {
         EngravingJobEntity job = jobRepository.findByJobCode(jobCode)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy Job có mã: " + jobCode));
 
+        boolean wasQueued = "QUEUED".equalsIgnoreCase(job.getStatus());
         job.setStatus("CANCELLED");
         jobRepository.save(job);
 
         // Bắn thông báo cập nhật trạng thái
         messagingTemplate.convertAndSend("/topic/jobs/" + jobCode + "/status", "CANCELLED");
-        log.info("[CANCEL] Đã hủy bỏ Job: {}", jobCode);
+        log.info("[CANCEL] Đã hủy bỏ Job: {} (Trạng thái trước: {})", jobCode, wasQueued ? "QUEUED" : "ACTIVE");
 
-        // Chuyển tiếp lệnh dừng xuống bo mạch qua Render Gateway
-        try {
-            String devCode = job.getDevice() != null ? job.getDevice().getDeviceCode() : "LASER-HN-001";
-            renderGatewayClient.sendDeviceCommand(devCode, "CANCEL", jobCode, "User cancelled from Web Studio");
-        } catch (Exception e) {
-            log.warn("[CANCEL] Bỏ qua lỗi gửi lệnh CANCEL sang Render Gateway: {}", e.getMessage());
+        if (!wasQueued) {
+            // Giải phóng thiết bị nếu không còn job nào đang chạy
+            if (job.getDevice() != null) {
+                job.getDevice().setConnectionStatus("ONLINE");
+                deviceRepository.save(job.getDevice());
+            }
+
+            // Chuyển tiếp lệnh dừng xuống bo mạch qua Render Gateway
+            try {
+                String devCode = job.getDevice() != null ? job.getDevice().getDeviceCode() : "LASER-HN-001";
+                renderGatewayClient.sendDeviceCommand(devCode, "CANCEL", jobCode, "User cancelled from Web Studio");
+            } catch (Exception e) {
+                log.warn("[CANCEL] Bỏ qua lỗi gửi lệnh CANCEL sang Render Gateway: {}", e.getMessage());
+            }
         }
     }
 
@@ -289,12 +386,93 @@ public class JobServiceImpl implements JobService {
         EngravingJobEntity job = jobRepository.findByJobCode(jobCode)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy Job có mã: " + jobCode));
 
+        DeviceEntity device = job.getDevice();
+        String deviceCode = device != null ? device.getDeviceCode() : "LASER-HN-001";
+
+        // Trường hợp 1: Job đang trong HÀNG ĐỢI (QUEUED) -> Admin phê duyệt để nạp & điều phối xuống máy
+        if ("QUEUED".equalsIgnoreCase(job.getStatus())) {
+            if (device != null && "OFFLINE".equalsIgnoreCase(device.getConnectionStatus())) {
+                throw new InvalidParameterException("Thiết bị " + deviceCode + " hiện đang Ngoại tuyến (OFFLINE). Vui lòng cắm nguồn và đợi kết nối Wi-Fi trước!");
+            }
+
+            // Kiểm tra xem máy có đang bận với job nào khác không
+            boolean isBusy = (device != null && "BUSY".equalsIgnoreCase(device.getConnectionStatus())) ||
+                    (device != null && jobRepository.existsByDeviceIdAndStatusIn(
+                            device.getId(),
+                            List.of("DISPATCHED", "DOWNLOADING", "VALIDATING", "AWAITING_ONSITE_CONFIRMATION", "PRINTING")
+                    ));
+
+            if (isBusy) {
+                throw new InvalidParameterException("Máy " + deviceCode + " hiện đang bận thực thi job khác. Vui lòng đợi job hiện tại hoàn thành trước khi điều phối job tiếp theo!");
+            }
+
+            job.setStatus("DISPATCHED");
+            job.setDispatchedAt(LocalDateTime.now());
+            jobRepository.save(job);
+
+            if (device != null) {
+                device.setConnectionStatus("BUSY");
+                deviceRepository.save(device);
+            }
+
+            // Bắn WebSocket thông báo NEW_JOB_AVAILABLE xuống bo mạch
+            String downloadUrl = "/api/v1/jobs/" + job.getId() + "/download";
+            JobNotificationMessage notification = JobNotificationMessage.builder()
+                    .event("NEW_JOB_AVAILABLE")
+                    .jobId(job.getId())
+                    .jobCode(job.getJobCode())
+                    .fileName(job.getOriginalFilename())
+                    .fileSizeBytes(job.getFileSizeBytes())
+                    .sha256Checksum(job.getSha256Checksum())
+                    .downloadUrl(downloadUrl)
+                    .targetWidthMm(job.getTargetWidthMm())
+                    .targetHeightMm(job.getTargetHeightMm())
+                    .feedRate(job.getFeedRate())
+                    .laserPower(job.getLaserPower())
+                    .build();
+
+            messagingTemplate.convertAndSend("/topic/device/" + deviceCode + "/jobs", notification);
+            messagingTemplate.convertAndSend("/topic/client/jobs", notification);
+
+            JobStatusUpdateMessage statusMsg = JobStatusUpdateMessage.builder()
+                    .type("JOB_STATUS_CHANGE")
+                    .deviceCode(deviceCode)
+                    .jobCode(jobCode)
+                    .status("DISPATCHED")
+                    .message("Admin đã phê duyệt và điều phối Job từ hàng đợi xuống máy")
+                    .timestamp(System.currentTimeMillis())
+                    .build();
+            messagingTemplate.convertAndSend("/topic/jobs/" + jobCode + "/status", statusMsg);
+            messagingTemplate.convertAndSend("/topic/client/status", statusMsg);
+
+            // Chuyển tiếp sang Render Gateway
+            try {
+                String gcodeContent = fileStorageService.loadGcodeFileAsString(job.getStoredFilePath());
+                renderGatewayClient.dispatchJobToGateway(
+                        job.getJobCode(),
+                        deviceCode,
+                        job.getJobCode() + ".gcode",
+                        gcodeContent,
+                        job.getTargetWidthMm(),
+                        job.getTargetHeightMm(),
+                        job.getFeedRate(),
+                        job.getLaserPower(),
+                        job.getMaterialType()
+                );
+            } catch (Exception e) {
+                log.warn("[CONFIRM QUEUED] Lỗi chuyển tiếp Render Gateway: {}", e.getMessage());
+            }
+
+            log.info("[CONFIRM QUEUED] Quản máy đã phê duyệt Job {} từ hàng đợi xuống máy {}", jobCode, deviceCode);
+            return;
+        }
+
+        // Trường hợp 2: Job đã nạp vào máy và đang CHỜ XÁC NHẬN AN TOÀN TẠI CHỖ (AWAITING_ONSITE_CONFIRMATION)
         job.setStatus("PRINTING");
         if (job.getStartedAt() == null) job.setStartedAt(java.time.LocalDateTime.now());
         if (job.getConfirmedAt() == null) job.setConfirmedAt(java.time.LocalDateTime.now());
         jobRepository.save(job);
 
-        String deviceCode = job.getDevice() != null ? job.getDevice().getDeviceCode() : "LASER-HN-001";
         if (job.getDevice() != null) {
             job.getDevice().setConnectionStatus("BUSY");
             deviceRepository.save(job.getDevice());
@@ -361,7 +539,7 @@ public class JobServiceImpl implements JobService {
                         if ("COMPLETED".equalsIgnoreCase(gatewayStatus)) {
                             job.setCurrentProgress(100.0);
                             if (job.getCompletedAt() == null) job.setCompletedAt(LocalDateTime.now());
-                            if (job.getDevice() != null) {
+                            if (job.getDevice() != null && !"OFFLINE".equalsIgnoreCase(job.getDevice().getConnectionStatus())) {
                                 job.getDevice().setConnectionStatus("ONLINE");
                                 deviceRepository.save(job.getDevice());
                             }
@@ -372,7 +550,7 @@ public class JobServiceImpl implements JobService {
                                 deviceRepository.save(job.getDevice());
                             }
                         } else if ("FAILED".equalsIgnoreCase(gatewayStatus) || "CANCELLED".equalsIgnoreCase(gatewayStatus)) {
-                            if (job.getDevice() != null) {
+                            if (job.getDevice() != null && !"OFFLINE".equalsIgnoreCase(job.getDevice().getConnectionStatus())) {
                                 job.getDevice().setConnectionStatus("ONLINE");
                                 deviceRepository.save(job.getDevice());
                             }
@@ -481,6 +659,17 @@ public class JobServiceImpl implements JobService {
     }
 
     private JobDispatchResponse mapToResponse(EngravingJobEntity entity, String downloadUrl) {
+        Integer queuePos = null;
+        if ("QUEUED".equalsIgnoreCase(entity.getStatus()) && entity.getDevice() != null) {
+            List<EngravingJobEntity> queued = jobRepository.findByDeviceIdAndStatusOrderByDispatchedAtAsc(entity.getDevice().getId(), "QUEUED");
+            for (int i = 0; i < queued.size(); i++) {
+                if (queued.get(i).getId().equals(entity.getId())) {
+                    queuePos = i + 1;
+                    break;
+                }
+            }
+        }
+
         return JobDispatchResponse.builder()
                 .jobId(entity.getId())
                 .jobCode(entity.getJobCode())
@@ -499,6 +688,7 @@ public class JobServiceImpl implements JobService {
                 .materialType(entity.getMaterialType())
                 .downloadUrl(downloadUrl)
                 .dispatchedAt(entity.getDispatchedAt())
+                .queuePosition(queuePos)
                 .build();
     }
 
@@ -521,5 +711,24 @@ public class JobServiceImpl implements JobService {
     @Override
     public boolean sendDeviceCommand(String deviceCode, String action, String jobCode, String reason) {
         return renderGatewayClient.sendDeviceCommand(deviceCode, action, jobCode, reason);
+    }
+
+    private DeviceResponse mapToDeviceResponse(DeviceEntity entity) {
+        return DeviceResponse.builder()
+                .id(entity.getId())
+                .deviceCode(entity.getDeviceCode())
+                .deviceName(entity.getDeviceName())
+                .connectionStatus(entity.getConnectionStatus())
+                .ipAddress(entity.getIpAddress())
+                .firmwareVersion(entity.getFirmwareVersion())
+                .maxWidthMm(entity.getMaxWidthMm())
+                .maxHeightMm(entity.getMaxHeightMm())
+                .maxSpeedMmMin(entity.getMaxSpeedMmMin())
+                .maxPowerS(entity.getMaxPowerS())
+                .configVersion(entity.getConfigVersion())
+                .configAppliedVersion(entity.getConfigAppliedVersion())
+                .lastHeartbeat(entity.getLastHeartbeat())
+                .isActive(entity.getIsActive())
+                .build();
     }
 }

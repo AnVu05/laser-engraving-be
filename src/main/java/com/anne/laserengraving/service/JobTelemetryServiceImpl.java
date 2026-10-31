@@ -121,6 +121,22 @@ public class JobTelemetryServiceImpl implements JobTelemetryService {
         if (device != null) {
             device.setConnectionStatus("ONLINE");
             deviceRepository.save(device);
+
+            long queuedCount = jobRepository.countByDeviceIdAndStatus(device.getId(), "QUEUED");
+            log.info("[DEVICE RELEASE] Thiết bị {} đã giải phóng về ONLINE. Hàng đợi hiện có {} job đang chờ.",
+                    device.getDeviceCode(), queuedCount);
+
+            JobStatusUpdateMessage updateMsg = JobStatusUpdateMessage.builder()
+                    .type("DEVICE_FREE")
+                    .deviceCode(device.getDeviceCode())
+                    .jobCode(null)
+                    .status("ONLINE")
+                    .message("Thiết bị " + device.getDeviceCode() + " đã giải phóng (ONLINE). Có " + queuedCount + " job trong hàng đợi sẵn sàng xử lý!")
+                    .timestamp(System.currentTimeMillis())
+                    .build();
+
+            messagingTemplate.convertAndSend("/topic/client/status", updateMsg);
+            messagingTemplate.convertAndSend("/topic/devices/status", updateMsg);
         }
     }
 }

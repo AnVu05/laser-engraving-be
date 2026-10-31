@@ -153,28 +153,34 @@ public class RenderIotGatewayClient {
     }
 
     /**
-     * Gửi lệnh tức thời (PAUSE, RESUME, CANCEL, HOME) sang Render Gateway để bắn xuống bo mạch
+     * Gửi lệnh tức thời kèm đầy đủ tham số (FRAME, PAUSE, RESUME, CANCEL, HOME) sang Render Gateway
      */
-    public boolean sendDeviceCommand(String deviceCode, String action, String jobCode, String reason) {
-        if (!enabled) return false;
+    public boolean sendDeviceCommand(String deviceCode, Map<String, Object> commandPayload) {
+        if (!enabled || commandPayload == null) return false;
 
         String url = gatewayUrl + "/api/v1/internal/devices/" + deviceCode + "/commands";
         HttpHeaders headers = createAuthHeaders();
 
-        Map<String, Object> body = Map.of(
-                "action", action,
-                "jobCode", jobCode != null ? jobCode : "",
-                "reason", reason != null ? reason : ""
-        );
-
         try {
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(commandPayload, headers);
             ResponseEntity<Map> response = restTemplate.postForEntity(url, entity, Map.class);
             return response.getStatusCode().is2xxSuccessful();
         } catch (RestClientException e) {
-            log.warn("[RENDER GATEWAY] Lỗi gửi lệnh {} xuống máy {} qua Render: {}", action, deviceCode, e.getMessage());
+            log.warn("[RENDER GATEWAY] Lỗi gửi lệnh xuống máy {} qua Render: {}", deviceCode, e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Gửi lệnh tức thời (PAUSE, RESUME, CANCEL, HOME) sang Render Gateway để bắn xuống bo mạch
+     */
+    public boolean sendDeviceCommand(String deviceCode, String action, String jobCode, String reason) {
+        Map<String, Object> body = Map.of(
+                "action", action != null ? action : "",
+                "jobCode", jobCode != null ? jobCode : "",
+                "reason", reason != null ? reason : ""
+        );
+        return sendDeviceCommand(deviceCode, body);
     }
 
     /**

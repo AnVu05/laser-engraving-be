@@ -150,8 +150,13 @@ public class DeviceServiceImpl implements DeviceService {
                         var data = gatewayStatusOpt.get();
                         String gwStatus = (String) data.get("status");
                         boolean gwActive = Boolean.TRUE.equals(data.get("isActive"));
+                        boolean hasHeartbeat = false;
 
-                        if ("ONLINE".equalsIgnoreCase(gwStatus) || gwActive) {
+                        if (data.get("lastHeartbeat") instanceof java.util.Map hb && !hb.isEmpty()) {
+                            hasHeartbeat = hb.containsKey("timestamp") || hb.containsKey("freeHeap");
+                        }
+
+                        if (!"OFFLINE".equalsIgnoreCase(gwStatus) && gwActive && hasHeartbeat) {
                             targetStatus = "BUSY".equalsIgnoreCase(oldStatus) ? "BUSY" : "ONLINE";
                         } else {
                             targetStatus = "OFFLINE";
@@ -196,17 +201,19 @@ public class DeviceServiceImpl implements DeviceService {
                     var data = gatewayStatusOpt.get();
                     String gwStatus = (String) data.get("status");
                     boolean gwActive = Boolean.TRUE.equals(data.get("isActive"));
+                    boolean hasHeartbeat = false;
 
-                    if ("ONLINE".equalsIgnoreCase(gwStatus) || gwActive) {
+                    if (data.get("lastHeartbeat") instanceof java.util.Map hb && !hb.isEmpty()) {
+                        if (hb.get("wifiRssi") instanceof Number num) wifiRssi = num.intValue();
+                        if (hb.get("freeHeap") instanceof Number num) freeHeap = num.longValue();
+                        hasHeartbeat = hb.containsKey("timestamp") || hb.containsKey("freeHeap");
+                    }
+
+                    if (!"OFFLINE".equalsIgnoreCase(gwStatus) && gwActive && hasHeartbeat) {
                         status = "BUSY".equalsIgnoreCase(entity.getConnectionStatus()) ? "BUSY" : "ONLINE";
                         lastHeartbeat = LocalDateTime.now();
                     } else {
                         status = "OFFLINE";
-                    }
-
-                    if (data.get("lastHeartbeat") instanceof java.util.Map hb) {
-                        if (hb.get("wifiRssi") instanceof Number num) wifiRssi = num.intValue();
-                        if (hb.get("freeHeap") instanceof Number num) freeHeap = num.longValue();
                     }
                 }
             } catch (Exception e) {

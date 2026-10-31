@@ -66,7 +66,7 @@ public class EngravingJobEntity {
 
     @Column(name = "status", nullable = false, length = 30)
     @Builder.Default
-    private String status = "DISPATCHED"; // DISPATCHED, DOWNLOADED, VALIDATED, AWAITING_ONSITE_CONFIRMATION, PRINTING, COMPLETED, FAILED, CANCELLED
+    private String status = "DISPATCHED"; // QUEUED, DISPATCHED, DOWNLOADING, VALIDATING, AWAITING_ONSITE_CONFIRMATION, PRINTING, COMPLETED, FAILED, CANCELLED
 
     @Column(name = "current_progress", nullable = false)
     @Builder.Default

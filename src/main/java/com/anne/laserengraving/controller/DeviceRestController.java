@@ -23,6 +23,8 @@ public class DeviceRestController {
 
     private final DeviceService deviceService;
     private final DeviceCredentialService credentialService;
+    private final org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
+    private final com.anne.laserengraving.service.RenderIotGatewayClient renderGatewayClient;
 
     @GetMapping
     @Operation(summary = "Lấy danh sách các máy khắc Laser đang hoạt động trong hệ thống")
@@ -65,6 +67,20 @@ public class DeviceRestController {
                 "status", "SUCCESS",
                 "message", "Heartbeat received",
                 "timestamp", System.currentTimeMillis()
+        ));
+    }
+
+    @PostMapping("/{deviceCode}/commands")
+    @Operation(summary = "Gửi lệnh tức thời (PAUSE, RESUME, CANCEL, HOME, FRAME) xuống máy")
+    public ResponseEntity<Map<String, Object>> sendDeviceCommand(
+            @PathVariable String deviceCode,
+            @RequestBody Map<String, Object> commandPayload) {
+        String action = String.valueOf(commandPayload.getOrDefault("action", ""));
+        messagingTemplate.convertAndSend("/topic/device/" + deviceCode.toUpperCase() + "/commands", (Object) commandPayload);
+        renderGatewayClient.sendDeviceCommand(deviceCode, commandPayload);
+        return ResponseEntity.ok(Map.of(
+                "status", "SUCCESS",
+                "message", "Đã phát lệnh " + action + " xuống thiết bị " + deviceCode
         ));
     }
 }

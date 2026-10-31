@@ -65,4 +65,10 @@ public class JobDispatchResponse {
 
     @Schema(description = "Thời điểm điều phối Job")
     private LocalDateTime dispatchedAt;
+
+    @Schema(description = "Vị trí trong hàng đợi gia công (nếu đang chờ)", example = "1")
+    private Integer queuePosition;
+
+    @Schema(description = "Thông báo trạng thái điều phối", example = "Job đã vào hàng đợi gia công")
+    private String message;
 }

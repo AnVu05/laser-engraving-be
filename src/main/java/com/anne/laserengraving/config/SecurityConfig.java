@@ -70,8 +70,6 @@ public class SecurityConfig {
                         // 2. Endpoints Quản trị & Điều hành Máy Laser (BẮT BUỘC ROLE ADMIN HOẶC OPERATOR)
                         .requestMatchers(HttpMethod.POST, "/api/v1/jobs/*/confirm").hasAnyRole("ADMIN", "OPERATOR")
                         .requestMatchers(HttpMethod.POST, "/api/v1/jobs/*/cancel").hasAnyRole("ADMIN", "OPERATOR")
-                        .requestMatchers(HttpMethod.POST, "/api/v1/jobs/*/command").hasAnyRole("ADMIN", "OPERATOR")
-                        .requestMatchers(HttpMethod.GET, "/api/v1/jobs/*/telemetry").hasAnyRole("ADMIN", "OPERATOR")
                         .requestMatchers(HttpMethod.GET, "/api/v1/jobs").hasAnyRole("ADMIN", "OPERATOR")
 
                         .requestMatchers(HttpMethod.PUT, "/api/v1/devices/*/config").hasAnyRole("ADMIN", "OPERATOR")
@@ -82,8 +80,11 @@ public class SecurityConfig {
 
                         // 3. Endpoints Công khai, Xác thực & Studio Designer
                         .requestMatchers(HttpMethod.GET, "/api/v1/devices/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/devices/*/commands").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/jobs/*/command").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/jobs/dispatch").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/jobs/*/telemetry").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/jobs/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/jobs/code/*").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/materials/**").permitAll()
