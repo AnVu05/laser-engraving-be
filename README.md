@@ -37,12 +37,12 @@ Hệ thống cơ sở dữ liệu được thiết kế chuẩn hóa trên **Mic
 
 | Tên Bảng (Table) | Khóa Chính (PK) | Quan Hệ (FK) | Chức Năng Chính |
 | :--- | :--- | :--- | :--- |
-| `users` | `user_id` (UUID) | — | Quản lý tài khoản người dùng, mã băm mật khẩu BCrypt, vai trò phân quyền (`ROLE_USER`, `ROLE_ADMIN`, `ROLE_OPERATOR`), nhà cung cấp xác thực (`LOCAL`, `GOOGLE`). |
-| `devices` | `device_id` (BIGINT) | — | Quản lý trạm máy khắc laser IoT (Makerbase MKS DLC32 V2.1), mã token phần cứng băm BCrypt, địa chỉ IP mạng nội bộ, RSSI sóng Wi-Fi, trạng thái (`ONLINE`, `BUSY`, `OFFLINE`) và cấu hình phần cứng v2 (kích thước bàn, tốc độ tối đa, PWM tối đa). |
-| `engraving_jobs` | `job_id` (BIGINT) | `device_id` $\rightarrow$ `devices` | Quản lý lệnh điều phối gia công, hàng đợi FIFO (`QUEUED`), trạng thái gia công 2 bước (`QUEUED` $\rightarrow$ `DISPATCHED` $\rightarrow$ `PRINTING` $\rightarrow$ `COMPLETED` / `CANCELLED` / `FAILED`), mã băm SHA-256 đối soát toàn vẹn, kích thước phôi và thông số F/S. |
-| `job_telemetry_logs` | `log_id` (BIGINT) | `job_id` $\rightarrow$ `engraving_jobs` | Lưu vết telemetry tiến độ chi tiết theo thời gian thực: phần trăm tiến độ, dòng lệnh hiện tại, thời gian chạy, tọa độ X/Y/Z và nhiệt độ đầu khắc. |
+| `users` | `user_id` (UUID) | — | Bảng trung tâm quản lý tài khoản người dùng, mã băm mật khẩu BCrypt, vai trò phân quyền (`ROLE_USER`, `ROLE_ADMIN`, `ROLE_OPERATOR`), nhà cung cấp xác thực (`LOCAL`, `GOOGLE`). |
+| `devices` | `id` (BIGINT) | — | Quản lý trạm máy khắc laser IoT (Makerbase MKS DLC32 V2.1), mã token phần cứng băm BCrypt, địa chỉ IP mạng nội bộ, RSSI sóng Wi-Fi, trạng thái (`ONLINE`, `BUSY`, `OFFLINE`) và cấu hình phần cứng v2 (kích thước bàn, tốc độ tối đa, PWM tối đa). |
+| `engraving_jobs` | `id` (BIGINT) | `user_id` $\rightarrow$ `users`<br>`device_id` $\rightarrow$ `devices` | Quản lý lệnh điều phối gia công, hàng đợi FIFO (`QUEUED`), trạng thái gia công 2 bước (`QUEUED` $\rightarrow$ `DISPATCHED` $\rightarrow$ `PRINTING` $\rightarrow$ `COMPLETED` / `CANCELLED` / `FAILED`), mã băm SHA-256 đối soát toàn vẹn, kích thước phôi và thông số F/S. |
+| `job_telemetry_logs` | `id` (BIGINT) | `job_id` $\rightarrow$ `engraving_jobs` | Lưu vết telemetry tiến độ chi tiết theo thời gian thực: phần trăm tiến độ, dòng lệnh hiện tại, trạng thái máy, thời gian ước tính còn lại. |
 | `laser_projects` | `project_id` (BIGINT) | `user_id` $\rightarrow$ `users` | Lưu trữ dữ liệu thiết kế bàn khắc 2D (khổ $300 \times 200\text{ mm}$), chuỗi JSON danh sách đối tượng (`elements_json`) và cấu hình tham số (`parameters_json`). |
-| `gcode_history` | `history_id` (BIGINT) | `user_id` $\rightarrow$ `users` *(nullable)* | Quản lý lịch sử tạo mã và gia công: tổng số dòng lệnh, tốc độ cắt, công suất phát PWM, DPI, kích thước thực tế và liên kết file `.nc` vật lý. |
+| `gcode_history` | `history_id` (BIGINT) | `user_id` $\rightarrow$ `users` *(nullable)*<br>`setting_id` $\rightarrow$ `laser_settings` *(nullable)* | Quản lý lịch sử tạo mã và gia công: tổng số dòng lệnh, tốc độ cắt, công suất phát PWM, DPI, kích thước thực tế và liên kết file `.nc` vật lý. |
 | `material_presets` | `preset_id` (BIGINT) | `user_id` $\rightarrow$ `users` *(nullable)* | Thư viện vật liệu mẫu hệ thống (`is_system = true`, 6 loại cơ bản) và vật liệu tùy chỉnh do người dùng tự thiết lập. |
 | `laser_settings` | `setting_id` (BIGINT) | `user_id` $\rightarrow$ `users` *(nullable)* | Cấu hình tham số máy khắc mặc định: tốc độ gia công, gia tốc động cơ, giới hạn an toàn công suất PWM, khổ bàn làm việc. |
 
